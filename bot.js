@@ -5,11 +5,12 @@ const { Sticker, StickerTypes } = require('wa-sticker-formatter');
 // ================= CONFIG
 const API_KEY = process.env.API_KEY;
 
-// ================= CLIENT (FIX RAILWAY TANPA PATH)
+// ================= CLIENT (FIX DOCKER CHROMIUM)
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
+        executablePath: '/usr/bin/chromium',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
