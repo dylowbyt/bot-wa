@@ -17,8 +17,8 @@ const OWNER_NUMBER = "6285285636317"
 
 // ================= MEMORY
 const groupMemory = {}
-const COOLDOWN = 10000
 let lastReplyTime = 0
+const COOLDOWN = 10000
 
 // ================= STICKER
 const stickerFolder = './stickers'
@@ -37,9 +37,24 @@ const startBot = async () => {
 
     console.log("🚀 Bot starting...")
 
-    let pairingRequested = false
+    // ================= FORCE PAIRING (PALING AMAN)
+    setTimeout(async () => {
+        if (!sock.authState.creds.registered) {
+            try {
+                const code = await sock.requestPairingCode(OWNER_NUMBER)
+                console.log("\n======================")
+                console.log("PAIRING CODE:", code)
+                console.log("======================\n")
+            } catch (err) {
+                console.log("❌ Pairing error:", err.message)
+            }
+        } else {
+            console.log("✔ Sudah login, skip pairing")
+        }
+    }, 8000)
 
-    sock.ev.on('connection.update', async (update) => {
+    // ================= CONNECTION
+    sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update
 
         if (connection === 'connecting') {
@@ -47,35 +62,19 @@ const startBot = async () => {
         }
 
         if (connection === 'open') {
-            console.log('✅ Connected to WhatsApp')
-
-            // 🔑 pairing hanya sekali + delay
-            if (!sock.authState.creds.registered && !pairingRequested) {
-                pairingRequested = true
-
-                setTimeout(async () => {
-                    try {
-                        const code = await sock.requestPairingCode(OWNER_NUMBER)
-                        console.log("\n==============================")
-                        console.log("PAIRING CODE:", code)
-                        console.log("==============================\n")
-                    } catch (err) {
-                        console.log("❌ Pairing error:", err.message)
-                    }
-                }, 4000) // delay 4 detik (lebih stabil)
-            }
+            console.log('✅ Connected ke WhatsApp')
         }
 
         if (connection === 'close') {
             const reason = lastDisconnect?.error?.output?.statusCode
 
-            console.log('❌ Disconnect, reason:', reason)
+            console.log('❌ Disconnect:', reason)
 
             if (reason !== DisconnectReason.loggedOut) {
                 console.log('🔄 Reconnecting...')
                 setTimeout(startBot, 5000)
             } else {
-                console.log('⚠️ Logged out, hapus folder session!')
+                console.log('⚠️ Logout! Hapus folder session')
             }
         }
     })
@@ -93,9 +92,9 @@ const startBot = async () => {
 
             const now = Date.now()
 
-            // anti spam / anti banned
+            // anti spam
             if (now - lastReplyTime < COOLDOWN) return
-            if (Math.random() > 0.65) return
+            if (Math.random() > 0.7) return
 
             lastReplyTime = now
 
@@ -124,7 +123,7 @@ const startBot = async () => {
             text = text.trim()
             if (text.length > 150) return
 
-            // ================= MEMORY
+            // ================= MEMORY CHAT
             if (!groupMemory[from]) groupMemory[from] = []
 
             groupMemory[from].push({
@@ -136,33 +135,21 @@ const startBot = async () => {
 
             const lower = text.toLowerCase()
 
-            let contextPrompt = ""
+            let mode = "Santai tongkrongan."
 
-            if (lower.includes('?')) {
-                contextPrompt = "Jawab santai, jelas."
-            } else if (lower.includes('capek') || lower.includes('sedih')) {
-                contextPrompt = "Balas kayak temen."
-            } else if (lower.includes('jelek') || lower.includes('norak')) {
-                contextPrompt = "Roasting santai."
-            } else {
-                contextPrompt = "Balas santai tongkrongan."
-            }
+            if (lower.includes('?')) mode = "Jawab santai & jelas."
+            if (lower.includes('sedih')) mode = "Balas kayak temen support."
+            if (lower.includes('jelek')) mode = "Roasting santai lucu."
 
             // ================= AI RESPONSE
-            const response = await axios.post(
+            const res = await axios.post(
                 'https://api.openai.com/v1/chat/completions',
                 {
                     model: "gpt-4o-mini",
                     messages: [
-                        {
-                            role: "system",
-                            content: "Lu anak tongkrongan WA. Santai, lucu, 1 kalimat."
-                        },
+                        { role: "system", content: "Lu anak tongkrongan WA, lucu, 1 kalimat." },
                         ...groupMemory[from],
-                        {
-                            role: "user",
-                            content: contextPrompt + "\n\nPesan: " + text
-                        }
+                        { role: "user", content: mode + "\n\nPesan: " + text }
                     ],
                     max_tokens: 60
                 },
@@ -174,7 +161,7 @@ const startBot = async () => {
                 }
             )
 
-            const reply = response.data.choices[0].message.content
+            const reply = res.data.choices[0].message.content
 
             await sock.sendMessage(from, { text: reply })
 
