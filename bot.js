@@ -34,11 +34,7 @@ let lastReplyTime = 0;
 
 // ================= MODE
 const modes = ["normal", "sarkas", "roasting"];
-
-function randomMode() {
-    return modes[Math.floor(Math.random() * modes.length)];
-}
-
+function randomMode() { return modes[Math.floor(Math.random() * modes.length)]; }
 function allowRoasting(text) {
     const t = text.toLowerCase();
     return t.includes("wkwk") || t.includes("anjir") || t.includes("ngaco");
@@ -51,21 +47,17 @@ const stickerList = [
     './stickers/roasting.png',
     './stickers/komik.png'
 ];
-
 async function sendSticker(msg) {
     try {
         const randomSticker = stickerList[Math.floor(Math.random() * stickerList.length)];
-
         const sticker = new Sticker(randomSticker, {
             pack: 'Bot Tongkrongan',
             author: 'Elit++',
             type: StickerTypes.FULL,
             quality: 50
         });
-
         const buffer = await sticker.toBuffer();
         await msg.reply(buffer, undefined, { sendMediaAsSticker: true });
-
     } catch (err) {
         console.log('Sticker error:', err.message);
     }
@@ -103,125 +95,75 @@ Contoh:
 async function askAI(messages) {
     const res = await axios.post(
         'https://api.openai.com/v1/chat/completions',
-        {
-            model: "gpt-4o-mini",
-            messages,
-            max_tokens: 60
-        },
-        {
-            headers: {
-                'Authorization': `Bearer ${API_KEY}`,
-                'Content-Type': 'application/json'
-            }
-        }
+        { model: "gpt-4o-mini", messages, max_tokens: 60 },
+        { headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' } }
     );
-
     return res.data.choices[0].message.content;
 }
 
-// ================= QR
+// ================= QR LOGIN
 client.on('qr', async (qr) => {
     const qrImage = await QRCode.toDataURL(qr);
     console.log(qrImage);
 });
 
 // ================= READY
-client.on('ready', () => {
-    console.log('🔥 Bot ELIT++ SUPER AKTIF');
-});
+client.on('ready', () => { console.log('🔥 Bot ELIT++ SUPER AKTIF'); });
 
 // ================= DISCONNECT
-client.on('disconnected', () => {
-    client.initialize();
-});
+client.on('disconnected', () => { client.initialize(); });
 
 // ================= MAIN
 client.on('message', async (msg) => {
     try {
         if (!msg.from.endsWith('@g.us')) return;
-
-        const chat = await msg.getChat();
         groupActivity[msg.from] = Date.now();
 
         const now = Date.now();
         if (now - lastReplyTime < COOLDOWN) return;
 
-        // ================= STIKER RANDOM
-        if (Math.random() < 0.15) {
-            return sendSticker(msg);
-        }
+        const chat = await msg.getChat();
 
-        // ================= MEDIA (VISION)
+        // ================= HANDLE MEDIA
         if (msg.hasMedia) {
             const media = await msg.downloadMedia();
 
-            if (media.mimetype.startsWith('image')) {
-                if (Math.random() > 0.6) return;
-
+            if (media.mimetype.startsWith('image') && Math.random() > 0.4) {
                 const mode = randomMode();
-
                 const reply = await askAI([
-                    {
-                        role: "system",
-                        content: getSystemPrompt(mode) + " Komenin foto ini secara spontan."
-                    },
-                    {
-                        role: "user",
-                        content: [
-                            { type: "text", text: "Komentarin gambar ini" },
-                            {
-                                type: "image_url",
-                                image_url: {
-                                    url: `data:${media.mimetype};base64,${media.data}`
-                                }
-                            }
-                        ]
-                    }
+                    { role: "system", content: getSystemPrompt(mode) + " Komenin foto ini spontan." },
+                    { role: "user", content: [
+                        { type: "text", text: "Komentarin gambar ini" },
+                        { type: "image_url", image_url: { url: `data:${media.mimetype};base64,${media.data}` } }
+                    ]}
                 ]);
-
-                return msg.reply(reply);
+                msg.reply(reply);
+                return;
             }
 
-            if (media.mimetype.startsWith('video')) {
-                if (Math.random() > 0.7) return;
-
+            if (media.mimetype.startsWith('video') && Math.random() > 0.4) {
                 const reply = await askAI([
-                    {
-                        role: "system",
-                        content: "Lu anak tongkrongan. React ke video santai & lucu."
-                    },
-                    {
-                        role: "user",
-                        content: msg.body || "Ada video di grup"
-                    }
+                    { role: "system", content: "Lu anak tongkrongan. React ke video santai & lucu." },
+                    { role: "user", content: msg.body || "Ada video di grup" }
                 ]);
-
-                return msg.reply(reply);
+                msg.reply(reply);
+                return;
             }
         }
 
-        // ================= TEXT
+        // ================= HANDLE TEXT
         const text = msg.body.trim();
         if (!text || text.length > 150) return;
 
         const isReply = msg.hasQuotedMsg;
         const isMention = msg.mentionedIds.length > 0;
-
-        // filter biar gak semua di respon
         if (!isReply && !isMention && Math.random() > 0.5) return;
 
         let mode = randomMode();
-        if (mode === "roasting" && !allowRoasting(text)) {
-            mode = "normal";
-        }
+        if (mode === "roasting" && !allowRoasting(text)) mode = "normal";
 
         if (!groupMemory[msg.from]) groupMemory[msg.from] = [];
-
-        groupMemory[msg.from].push({
-            role: "user",
-            content: text
-        });
-
+        groupMemory[msg.from].push({ role: "user", content: text });
         groupMemory[msg.from] = groupMemory[msg.from].slice(-10);
 
         const reply = await askAI([
@@ -231,16 +173,20 @@ client.on('message', async (msg) => {
 
         lastReplyTime = now;
 
+        // ================= RESPON + STICKER RANDOM
         setTimeout(() => {
             msg.reply(reply);
+
+            // kirim stiker kadang-kadang setelah chat
+            if (Math.random() < 0.25) {
+                setTimeout(() => sendSticker(msg), Math.random() * 2000 + 1000);
+            }
         }, Math.random() * 3000 + 1000);
 
-    } catch (err) {
-        console.log('❌ Error:', err.message);
-    }
+    } catch (err) { console.log('❌ Error:', err.message); }
 });
 
-// ================= AUTO NIMBRUNG
+// ================= AUTO NIMBRUNG (GRUP SEPI)
 setInterval(async () => {
     const chats = await client.getChats();
 
@@ -250,20 +196,11 @@ setInterval(async () => {
         const last = groupActivity[chat.id._serialized] || 0;
         const diff = (Date.now() - last) / (1000 * 60 * 60);
 
-        if (diff >= 4 && diff <= 7) {
-            if (Math.random() > 0.5) continue;
-
+        if (diff >= 4 && diff <= 7 && Math.random() < 0.5) {
             const text = await askAI([
-                {
-                    role: "system",
-                    content: "Lu di grup sepi. Mulai obrolan random gaya tongkrongan."
-                },
-                {
-                    role: "user",
-                    content: "Mulai chat"
-                }
+                { role: "system", content: "Lu di grup sepi. Mulai obrolan random gaya tongkrongan." },
+                { role: "user", content: "Mulai chat" }
             ]);
-
             chat.sendMessage(text);
             groupActivity[chat.id._serialized] = Date.now();
         }
