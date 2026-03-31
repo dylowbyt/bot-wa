@@ -1,4 +1,4 @@
-// ================= FIX CRYPTO (WAJIB PALING ATAS)
+// ================= FIX CRYPTO (WAJIB)
 import crypto from 'crypto'
 global.crypto = crypto.webcrypto
 globalThis.crypto = crypto.webcrypto
@@ -30,12 +30,15 @@ const startBot = async () => {
     const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        browser: ['Ubuntu', 'Chrome', '20.0.04']
+        browser: ['Ubuntu', 'Chrome', '20.0.04'],
+        connectTimeoutMs: 60000,
+        keepAliveIntervalMs: 10000
     })
 
     console.log("🚀 Bot starting...")
 
-    // ================= CONNECTION + PAIRING FIX
+    let pairingRequested = false
+
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update
 
@@ -45,25 +48,35 @@ const startBot = async () => {
 
         if (connection === 'open') {
             console.log('✅ Connected to WhatsApp')
-        }
 
-        // 🔑 pairing HARUS DI SINI
-        if (!sock.authState.creds.registered) {
-            try {
-                const code = await sock.requestPairingCode(OWNER_NUMBER)
-                console.log("PAIRING CODE:", code)
-            } catch (err) {
-                console.log("Pairing error:", err.message)
+            // 🔑 pairing hanya sekali + delay
+            if (!sock.authState.creds.registered && !pairingRequested) {
+                pairingRequested = true
+
+                setTimeout(async () => {
+                    try {
+                        const code = await sock.requestPairingCode(OWNER_NUMBER)
+                        console.log("\n==============================")
+                        console.log("PAIRING CODE:", code)
+                        console.log("==============================\n")
+                    } catch (err) {
+                        console.log("❌ Pairing error:", err.message)
+                    }
+                }, 4000) // delay 4 detik (lebih stabil)
             }
         }
 
         if (connection === 'close') {
-            const shouldReconnect =
-                lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
+            const reason = lastDisconnect?.error?.output?.statusCode
 
-            console.log('❌ Disconnect, reconnect...', shouldReconnect)
+            console.log('❌ Disconnect, reason:', reason)
 
-            if (shouldReconnect) startBot()
+            if (reason !== DisconnectReason.loggedOut) {
+                console.log('🔄 Reconnecting...')
+                setTimeout(startBot, 5000)
+            } else {
+                console.log('⚠️ Logged out, hapus folder session!')
+            }
         }
     })
 
@@ -76,8 +89,6 @@ const startBot = async () => {
             if (!msg.message) return
 
             const from = msg.key.remoteJid
-
-            // hanya group
             if (!from.endsWith('@g.us')) return
 
             const now = Date.now()
