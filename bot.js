@@ -1,176 +1,230 @@
-// ================= FIX CRYPTO
-import crypto from 'crypto'
-global.crypto = crypto.webcrypto
-globalThis.crypto = crypto.webcrypto
-
-// ================= IMPORT
-import baileys from '@whiskeysockets/baileys'
-import fs from 'fs'
-import axios from 'axios'
-import path from 'path'
-
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = baileys
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const axios = require('axios');
+const { Sticker, StickerTypes } = require('wa-sticker-formatter');
+const QRCode = require('qrcode');
 
 // ================= CONFIG
-const OWNER_NUMBER = "6285934251573"
-const API_KEY = process.env.API_KEY
+const API_KEY = process.env.API_KEY;
+
+// ================= CLIENT (FIX RAILWAY CHROMIUM)
+const client = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        headless: true,
+        executablePath: '/usr/bin/chromium',
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-web-security',
+            '--no-first-run',
+            '--no-zygote'
+        ]
+    }
+});
 
 // ================= MEMORY
-const groupMemory = {}
-let lastReplyTime = 0
-const COOLDOWN = 10000
+const groupMemory = {};
 
-// ================= STICKER
-const stickerFolder = './stickers'
+// ================= ANTI SPAM
+const COOLDOWN = 8000;
+let lastReplyTime = 0;
 
-// ================= START BOT
-const startBot = async () => {
-    const { state, saveCreds } = await useMultiFileAuthState('./session')
+// ================= STIKER LIST
+const stickerList = [
+    './stickers/ketawa.png',
+    './stickers/ngakak.png',
+    './stickers/roasting.png',
+    './stickers/komik.png'
+];
 
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        connectTimeoutMs: 60000,
-        keepAliveIntervalMs: 10000,
-        browser: ['Ubuntu', 'Chrome', '20.0.04']
-    })
+// ================= FUNCTION STIKER
+async function sendSticker(msg) {
+    try {
+        const randomSticker = stickerList[Math.floor(Math.random() * stickerList.length)];
 
-    console.log("🚀 Bot starting...")
+        const sticker = new Sticker(randomSticker, {
+            pack: 'Bot Tongkrongan',
+            author: 'Elit++',
+            type: StickerTypes.FULL,
+            quality: 50
+        });
 
-    let pairingDone = false
+        const buffer = await sticker.toBuffer();
+        await msg.reply(buffer, undefined, { sendMediaAsSticker: true });
 
-    // ================= CONNECTION
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect } = update
+    } catch (err) {
+        console.log('Sticker error:', err.message);
+    }
+}
 
-        if (connection === 'connecting') {
-            console.log('⏳ Connecting...')
+// ================= QR LOGIN (FIX LINK)
+client.on('qr', async (qr) => {
+    console.log('📱 QR dibuat...');
+
+    try {
+        const qrImage = await QRCode.toDataURL(qr);
+        console.log('\n👉 Buka link ini di browser:\n');
+        console.log(qrImage);
+    } catch (err) {
+        console.log('QR error:', err.message);
+    }
+});
+
+// ================= READY
+client.on('ready', () => {
+    console.log('🔥 Bot ELIT++ aktif');
+});
+
+// ================= DISCONNECT AUTO RECONNECT
+client.on('disconnected', (reason) => {
+    console.log('❌ Disconnect:', reason);
+    console.log('🔄 Reconnecting...');
+    client.initialize();
+});
+
+// ================= MAIN LOGIC
+client.on('message', async (msg) => {
+    try {
+        if (!msg.from.endsWith('@g.us')) return;
+
+        const now = Date.now();
+        if (now - lastReplyTime < COOLDOWN) return;
+
+        if (Math.random() > 0.6) return;
+
+        lastReplyTime = now;
+
+        // ================= STIKER RANDOM
+        if (Math.random() < 0.25) {
+            return sendSticker(msg);
         }
 
-        if (connection === 'open') {
-            console.log('✅ Connected ke WhatsApp')
+        // ================= HANDLE MEDIA (VISION)
+        if (msg.hasMedia) {
+            const media = await msg.downloadMedia();
 
-            // 🔑 PAIRING SUPER AMAN (ANTI 405)
-            if (!sock.authState.creds.registered && !pairingDone) {
-                pairingDone = true
+            if (!media || !media.mimetype.startsWith('image')) return;
 
-                console.log("⏳ Tunggu 15 detik sebelum pairing...")
+            if (Math.random() > 0.5) return;
 
-                setTimeout(async () => {
-                    try {
-                        const code = await sock.requestPairingCode(OWNER_NUMBER)
-
-                        console.log("\n==============================")
-                        console.log("PAIRING CODE:", code)
-                        console.log("==============================\n")
-
-                    } catch (err) {
-                        console.log("❌ Pairing error:", err.message)
-                    }
-                }, 15000) // 15 DETIK (WAJIB BIAR GAK 405)
-            }
-        }
-
-        if (connection === 'close') {
-            const reason = lastDisconnect?.error?.output?.statusCode
-
-            console.log('❌ Disconnect:', reason)
-
-            // ⛔ kasih jeda biar gak ke-block
-            if (reason !== DisconnectReason.loggedOut) {
-                console.log('⏳ Reconnect 15 detik...')
-                setTimeout(startBot, 15000)
-            } else {
-                console.log('⚠️ Logout! hapus session')
-            }
-        }
-    })
-
-    sock.ev.on('creds.update', saveCreds)
-
-    // ================= MESSAGE HANDLER (AKTIF SETELAH LOGIN)
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-        try {
-            const msg = messages[0]
-            if (!msg.message) return
-
-            const from = msg.key.remoteJid
-            if (!from.endsWith('@g.us')) return
-
-            const now = Date.now()
-
-            // anti spam
-            if (now - lastReplyTime < COOLDOWN) return
-            if (Math.random() > 0.7) return
-
-            lastReplyTime = now
-
-            // ================= STICKER RANDOM
-            if (Math.random() < 0.25) {
-                try {
-                    const files = fs.readdirSync(stickerFolder)
-                    if (files.length > 0) {
-                        const random = files[Math.floor(Math.random() * files.length)]
-                        const buffer = fs.readFileSync(path.join(stickerFolder, random))
-
-                        await sock.sendMessage(from, { sticker: buffer })
-                        return
-                    }
-                } catch (e) {
-                    console.log("Sticker error:", e.message)
-                }
-            }
-
-            let text =
-                msg.message.conversation ||
-                msg.message.extendedTextMessage?.text
-
-            if (!text) return
-
-            text = text.trim()
-            if (text.length > 150) return
-
-            // ================= MEMORY
-            if (!groupMemory[from]) groupMemory[from] = []
-
-            groupMemory[from].push({
-                role: "user",
-                content: text
-            })
-
-            groupMemory[from] = groupMemory[from].slice(-10)
-
-            // ================= AI
-            const res = await axios.post(
+            const response = await axios.post(
                 'https://api.openai.com/v1/chat/completions',
                 {
                     model: "gpt-4o-mini",
                     messages: [
-                        { role: "system", content: "Lu anak tongkrongan WA, santai, lucu, 1 kalimat." },
-                        ...groupMemory[from],
-                        { role: "user", content: text }
+                        {
+                            role: "system",
+                            content: "Lu anak tongkrongan WA. Komentarin gambar dengan santai, lucu, roasting dikit."
+                        },
+                        {
+                            role: "user",
+                            content: [
+                                { type: "text", text: "Komentarin gambar ini." },
+                                {
+                                    type: "image_url",
+                                    image_url: {
+                                        url: `data:${media.mimetype};base64,${media.data}`
+                                    }
+                                }
+                            ]
+                        }
                     ],
                     max_tokens: 60
                 },
                 {
                     headers: {
-                        Authorization: `Bearer ${API_KEY}`,
+                        'Authorization': `Bearer ${API_KEY}`,
                         'Content-Type': 'application/json'
                     }
                 }
-            )
+            );
 
-            const reply = res.data.choices[0].message.content
-
-            await sock.sendMessage(from, { text: reply })
-
-        } catch (err) {
-            console.log("ERROR:", err.message)
+            const reply = response.data.choices[0].message.content;
+            return msg.reply(reply);
         }
-    })
-}
 
-startBot()
+        // ================= HANDLE TEXT
+        let text = msg.body.trim();
+        if (!text || text.length > 150) return;
 
-// ================= ANTI EXIT
-setInterval(() => {}, 1000)
+        if (!groupMemory[msg.from]) {
+            groupMemory[msg.from] = [];
+        }
+
+        groupMemory[msg.from].push({
+            role: "user",
+            content: text
+        });
+
+        groupMemory[msg.from] = groupMemory[msg.from].slice(-10);
+
+        const lower = text.toLowerCase();
+
+        let contextPrompt = "";
+
+        if (
+            lower.includes('?') ||
+            lower.includes('gimana') ||
+            lower.includes('kenapa') ||
+            lower.includes('menurut')
+        ) {
+            contextPrompt = "Ini pertanyaan. Jawab santai, jelas.";
+        } else if (
+            lower.includes('capek') ||
+            lower.includes('sedih') ||
+            lower.includes('stress')
+        ) {
+            contextPrompt = "Ini curhat. Balas kayak temen.";
+        } else if (
+            lower.includes('jelek') ||
+            lower.includes('alay') ||
+            lower.includes('norak')
+        ) {
+            contextPrompt = "Roasting lucu, santai.";
+        } else {
+            contextPrompt = "Balas santai kayak tongkrongan.";
+        }
+
+        const messages = [
+            {
+                role: "system",
+                content: "Lu anak tongkrongan WA. Santai, lucu, kadang savage. Jawaban max 1 kalimat."
+            },
+            ...groupMemory[msg.from],
+            {
+                role: "user",
+                content: contextPrompt + "\n\nPesan terbaru: " + text
+            }
+        ];
+
+        const response = await axios.post(
+            'https://api.openai.com/v1/chat/completions',
+            {
+                model: "gpt-4o-mini",
+                messages: messages,
+                max_tokens: 60
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        const reply = response.data.choices[0].message.content;
+
+        msg.reply(reply);
+
+    } catch (err) {
+        console.log('❌ Error:', err.message);
+    }
+});
+
+// ================= START
+client.initialize();
+
+// ================= ANTI SLEEP
+setInterval(() => {}, 1000);
