@@ -55,13 +55,13 @@ async function sendSticker(msg){
 
 // ===== PROMPT
 function getSystemPrompt(){
-    return `Lu anak tongkrongan WA. Balas singkat, padat, logis, casual (yg, gitu, wkwk). Santai, kadang sarkas/roasting. 1-2 kalimat saja. Jawab sesuai topik dan relevan.`;
+    return `Lu anak tongkrongan WA. Balas singkat, padat, logis, casual (yg, gitu, wkwk). Santai, kadang sarkas/roasting. Jawaban max 1-2 kalimat. Jawab sesuai topik dan relevan.`;
 }
 
 // ===== AI REQUEST
 async function askAI(messages){
     const res = await axios.post('https://api.openai.com/v1/chat/completions',{
-        model:"gpt-4o-mini",messages,max_tokens:30
+        model:"gpt-4o-mini",messages,max_tokens:40
     },{
         headers:{'Authorization':`Bearer ${API_KEY}`,'Content-Type':'application/json'}
     });
@@ -97,23 +97,23 @@ client.on('message', async msg=>{
 
         // ===== CEK REPLY TO BOT =====
         let isReplyToBot = false;
-        if(msg.hasQuotedMsg){
+        if(botId && msg.hasQuotedMsg){
             const quotedMsg = await msg.getQuotedMessage().catch(()=>null);
             if(quotedMsg && quotedMsg.author === botId){
                 isReplyToBot = true;
             }
         }
 
-        const isMention = msg.mentionedIds?.includes(botId);
+        const isMention = botId && msg.mentionedIds?.includes(botId);
         const isSticker = msg.type==='sticker';
 
         // ===== CHECK KEYWORDS =====
         const keywords = ["?","gimana","kenapa","menurut","bagusan mana","bingung","pilih","saran dong","pendapat"];
-        const isQuestion = keywords.some(k=>lower.includes(k));
+        const isQuestion = keywords.some(k => lower.includes(k));
         const isJokes = lower.includes("haha")||lower.includes("wkwk")||lower.includes("jokes");
 
         // ===== SELEKTIF =====
-        const shouldReply = isReplyToBot || isMention || isSticker;
+        const shouldReply = isReplyToBot || isMention || isSticker || isQuestion || isJokes;
         if(!shouldReply) return;
 
         lastReplyTime = now;
@@ -128,7 +128,7 @@ client.on('message', async msg=>{
         if(msg.hasMedia){
             const media = await msg.downloadMedia().catch(()=>null);
             if(media && (media.mimetype.startsWith('image') || media.mimetype.startsWith('video'))){
-                if(isReplyToBot || isMention){
+                if(isReplyToBot || isMention || isQuestion || isJokes){
                     const reply = await askAI([
                         {role:"system", content:getSystemPrompt() },
                         {role:"user", content:text||"Ada media"}
@@ -140,7 +140,7 @@ client.on('message', async msg=>{
         }
 
         // ===== HANDLE TEXT =====
-        if(text && (isReplyToBot || isMention)){
+        if(text && (isReplyToBot || isMention || isQuestion || isJokes)){
             if(!groupMemory[msg.from]) groupMemory[msg.from]=[];
             groupMemory[msg.from].push({role:"user",content:text});
             groupMemory[msg.from]=groupMemory[msg.from].slice(-10);
@@ -149,7 +149,7 @@ client.on('message', async msg=>{
             setTimeout(()=>{
                 msg.reply(reply);
                 if(Math.random()<0.25){ setTimeout(()=>sendSticker(msg),Math.random()*2000+1000); }
-            }, Math.random()*3000+1000);
+            }, Math.random()*2000+1000);
         }
 
     }catch(err){ console.log('❌ Error:',err.message); }
