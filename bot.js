@@ -12,7 +12,7 @@ import path from 'path'
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = baileys
 
 // ================= CONFIG
-const OWNER_NUMBER = "6285285636317"
+const OWNER_NUMBER = "6285934251573"
 const API_KEY = process.env.API_KEY
 
 // ================= MEMORY
