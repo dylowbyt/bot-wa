@@ -42,7 +42,7 @@ function allowRoasting(text) {
     return t.includes("wkwk") || t.includes("anjir") || t.includes("ngaco");
 }
 
-// ================= STICKERS RANDOM
+// ================= STICKERS RANDOM (.webp support)
 const stickersFolder = path.join(__dirname, 'stickers');
 let stickerList = fs.existsSync(stickersFolder) ? 
     fs.readdirSync(stickersFolder)
@@ -55,7 +55,6 @@ function pickRandomSticker() {
     return stickerList[Math.floor(Math.random() * stickerList.length)];
 }
 
-// ================= SEND STICKER
 async function sendSticker(msg) {
     try {
         const stickerPath = pickRandomSticker();
@@ -76,26 +75,12 @@ async function sendSticker(msg) {
     }
 }
 
-// ================= SYSTEM PROMPT
+// ================= SYSTEM PROMPT (SINGKAT)
 function getSystemPrompt(mode) {
     return `
-Lu adalah member grup WhatsApp.
-
-Gaya:
-- Bahasa tongkrongan (lu, gw, anjir, wkwk)
-- Santai, kayak anak TikTok
-- 1-2 kalimat aja
-
-Mode: ${mode}
-
-Aturan:
-- normal → santai
-- sarkas → nyindir halus
-- roasting → ngeledek lucu (jangan jahat)
-
-Hindari:
-- bahas fisik / agama / keluarga
-- terlalu panjang
+Lu anak tongkrongan WA. Balas chat singkat, kata-kata casual, kayak yg, gitu, wkwk.
+Mode: ${mode}. Santai, kadang sarkas/roasting. 1-2 kata atau kalimat pendek. 
+Jangan panjang, jangan bahas fisik/agama/keluarga.
 `;
 }
 
@@ -103,7 +88,7 @@ Hindari:
 async function askAI(messages) {
     const res = await axios.post(
         'https://api.openai.com/v1/chat/completions',
-        { model: "gpt-4o-mini", messages, max_tokens: 60 },
+        { model: "gpt-4o-mini", messages, max_tokens: 30 },
         { headers: { 'Authorization': `Bearer ${API_KEY}`, 'Content-Type': 'application/json' } }
     );
     return res.data.choices[0].message.content;
@@ -116,7 +101,7 @@ client.on('qr', async (qr) => {
 });
 
 // ================= READY
-client.on('ready', () => { console.log('🔥 Bot ELIT++ SUPER AKTIF'); });
+client.on('ready', () => { console.log('🔥 Bot ELIT++ SINGKAT AKTIF'); });
 
 // ================= DISCONNECT
 client.on('disconnected', () => { client.initialize(); });
@@ -130,61 +115,61 @@ client.on('message', async (msg) => {
         const now = Date.now();
         if (now - lastReplyTime < COOLDOWN) return;
 
-        const chat = await msg.getChat();
+        const lower = msg.body?.toLowerCase() || "";
 
-        // ================= HANDLE MEDIA
+        // ================= SELEKTIF RESPON
+        const isReply = msg.hasQuotedMsg;
+        const isMention = msg.mentionedIds.length > 0;
+        const isSticker = msg.type === "sticker";
+        const isQuestion = lower.includes("?") || lower.includes("gimana") || lower.includes("kenapa") || lower.includes("menurut");
+        const isSaran = lower.includes("saran") || lower.includes("pendapat");
+        const isJokes = lower.includes("haha") || lower.includes("wkwk") || lower.includes("jokes");
+
+        const shouldReply = isReply || isMention || isQuestion || isSaran || isJokes || isSticker;
+        if (!shouldReply) return;
+
+        lastReplyTime = now;
+
+        // ================= HANDLE MEDIA (foto/video)
         if (msg.hasMedia) {
             const media = await msg.downloadMedia();
+            if (!media) return;
 
-            if (media.mimetype.startsWith('image') && Math.random() > 0.4) {
+            if (media.mimetype.startsWith('image') || media.mimetype.startsWith('video')) {
+                if (!shouldReply) return;
                 const mode = randomMode();
                 const reply = await askAI([
-                    { role: "system", content: getSystemPrompt(mode) + " Komenin foto ini spontan." },
-                    { role: "user", content: [
-                        { type: "text", text: "Komentarin gambar ini" },
-                        { type: "image_url", image_url: { url: `data:${media.mimetype};base64,${media.data}` } }
-                    ]}
-                ]);
-                msg.reply(reply);
-                return;
-            }
-
-            if (media.mimetype.startsWith('video') && Math.random() > 0.4) {
-                const reply = await askAI([
-                    { role: "system", content: "Lu anak tongkrongan. React ke video santai & lucu." },
-                    { role: "user", content: msg.body || "Ada video di grup" }
+                    { role: "system", content: getSystemPrompt(mode) + " Komenin media ini." },
+                    { role: "user", content: msg.body || "Ada media di grup" }
                 ]);
                 msg.reply(reply);
                 return;
             }
         }
 
-        // ================= HANDLE TEXT
-        const text = msg.body.trim();
-        if (!text || text.length > 150) return;
+        // ================= HANDLE STICKER
+        if (isSticker) {
+            setTimeout(() => sendSticker(msg), Math.random() * 2000 + 1000);
+            return;
+        }
 
-        const isReply = msg.hasQuotedMsg;
-        const isMention = msg.mentionedIds.length > 0;
-        if (!isReply && !isMention && Math.random() > 0.5) return;
+        // ================= HANDLE TEXT
+        if (!groupMemory[msg.from]) groupMemory[msg.from] = [];
+        groupMemory[msg.from].push({ role: "user", content: msg.body });
+        groupMemory[msg.from] = groupMemory[msg.from].slice(-10);
 
         let mode = randomMode();
-        if (mode === "roasting" && !allowRoasting(text)) mode = "normal";
-
-        if (!groupMemory[msg.from]) groupMemory[msg.from] = [];
-        groupMemory[msg.from].push({ role: "user", content: text });
-        groupMemory[msg.from] = groupMemory[msg.from].slice(-10);
+        if (mode === "roasting" && !allowRoasting(msg.body)) mode = "normal";
 
         const reply = await askAI([
             { role: "system", content: getSystemPrompt(mode) },
             ...groupMemory[msg.from]
         ]);
 
-        lastReplyTime = now;
-
-        // ================= RESPON + STICKER RANDOM
         setTimeout(() => {
             msg.reply(reply);
 
+            // Kadang kirim stiker random
             if (Math.random() < 0.25) {
                 setTimeout(() => sendSticker(msg), Math.random() * 2000 + 1000);
             }
@@ -193,7 +178,7 @@ client.on('message', async (msg) => {
     } catch (err) { console.log('❌ Error:', err.message); }
 });
 
-// ================= AUTO NIMBRUNG
+// ================= AUTO NIMBRUNG (jika grup sepi)
 setInterval(async () => {
     const chats = await client.getChats();
 
