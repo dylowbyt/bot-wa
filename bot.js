@@ -46,7 +46,7 @@ function allowRoasting(text) {
 const stickersFolder = path.join(__dirname, 'stickers');
 let stickerList = fs.existsSync(stickersFolder) ? 
     fs.readdirSync(stickersFolder)
-        .filter(file => /\.(png|jpg|jpeg)$/i.test(file))
+        .filter(file => /\.(png|jpg|jpeg|webp)$/i.test(file))
         .map(file => path.join(stickersFolder, file))
     : [];
 
