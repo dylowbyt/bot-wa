@@ -1,0 +1,27 @@
+{
+  "build": {
+    "nixpacksPlan": {
+      "phases": {
+        "setup": {
+          "nixPkgs": [
+            "chromium",
+            "glib",
+            "nss",
+            "atk",
+            "cups",
+            "gtk3",
+            "libx11",
+            "libxcomposite",
+            "libxdamage",
+            "libxext",
+            "libxfixes",
+            "libxrandr",
+            "libgbm",
+            "pango",
+            "cairo"
+          ]
+        }
+      }
+    }
+  }
+}
