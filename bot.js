@@ -1,95 +1,79 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const axios = require('axios');
-const { Sticker, StickerTypes } = require('wa-sticker-formatter');
+import makeWASocket, { useMultiFileAuthState } from '@whiskeysockets/baileys'
+import axios from 'axios'
+import fs from 'fs'
 
 // ================= CONFIG
-const API_KEY = process.env.API_KEY;
-
-// ================= CLIENT (FIX DOCKER CHROMIUM)
-const client = new Client({
-    authStrategy: new LocalAuth(),
-    puppeteer: {
-        headless: true,
-        executablePath: '/usr/bin/chromium',
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu'
-        ]
-    }
-});
+const API_KEY = process.env.API_KEY
+const OWNER_NUMBER = "6285285636317"
 
 // ================= MEMORY
-const groupMemory = {};
+const groupMemory = {}
+const COOLDOWN = 8000
+let lastReplyTime = 0
 
-// ================= ANTI SPAM
-const COOLDOWN = 8000;
-let lastReplyTime = 0;
+// ================= START
+const startBot = async () => {
+    const { state, saveCreds } = await useMultiFileAuthState('./session')
 
-// ================= STIKER LIST
-const stickerList = [
-    './stickers/ketawa.png',
-    './stickers/ngakak.png',
-    './stickers/roasting.png',
-    './stickers/komik.png'
-];
+    const sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false
+    })
 
-// ================= FUNCTION STIKER
-async function sendSticker(msg) {
-    try {
-        const randomSticker = stickerList[Math.floor(Math.random() * stickerList.length)];
-
-        const sticker = new Sticker(randomSticker, {
-            pack: 'Bot Tongkrongan',
-            author: 'Elit++',
-            type: StickerTypes.FULL,
-            quality: 50
-        });
-
-        const buffer = await sticker.toBuffer();
-        await msg.reply(buffer, undefined, { sendMediaAsSticker: true });
-
-    } catch (err) {
-        console.log('Sticker error:', err.message);
+    // ================= PAIRING CODE
+    if (!sock.authState.creds.registered) {
+        const code = await sock.requestPairingCode(OWNER_NUMBER)
+        console.log("PAIRING CODE:", code)
     }
-}
 
-// ================= QR LOGIN
-client.on('qr', (qr) => {
-    console.log('SCAN QR INI:');
-    console.log(qr);
-});
+    sock.ev.on('creds.update', saveCreds)
 
-// ================= READY
-client.on('ready', () => {
-    console.log('🔥 Bot ELIT++ aktif');
-});
+    console.log("🚀 Bot starting...")
 
-// ================= MAIN LOGIC
-client.on('message', async (msg) => {
-    try {
-        if (!msg.from.endsWith('@g.us')) return;
+    // ================= MESSAGE
+    sock.ev.on('messages.upsert', async ({ messages }) => {
+        try {
+            const msg = messages[0]
+            if (!msg.message) return
 
-        const now = Date.now();
-        if (now - lastReplyTime < COOLDOWN) return;
+            const from = msg.key.remoteJid
 
-        if (Math.random() > 0.6) return;
+            // hanya group
+            if (!from.endsWith('@g.us')) return
 
-        lastReplyTime = now;
+            const now = Date.now()
+            if (now - lastReplyTime < COOLDOWN) return
+            if (Math.random() > 0.6) return
 
-        // ================= STIKER RANDOM
-        if (Math.random() < 0.25) {
-            return sendSticker(msg);
-        }
+            lastReplyTime = now
 
-        // ================= HANDLE MEDIA (VISION)
-        if (msg.hasMedia) {
-            const media = await msg.downloadMedia();
+            let text = msg.message.conversation || msg.message.extendedTextMessage?.text
+            if (!text) return
 
-            if (!media || !media.mimetype.startsWith('image')) return;
+            text = text.trim()
+            if (text.length > 150) return
 
-            if (Math.random() > 0.5) return;
+            // memory
+            if (!groupMemory[from]) groupMemory[from] = []
+
+            groupMemory[from].push({
+                role: "user",
+                content: text
+            })
+
+            groupMemory[from] = groupMemory[from].slice(-10)
+
+            // context
+            const lower = text.toLowerCase()
+            let contextPrompt = ""
+
+            if (lower.includes('?')) {
+                contextPrompt = "Jawab santai, jelas."
+            } else if (lower.includes('capek') || lower.includes('sedih')) {
+                contextPrompt = "Balas kayak temen."
+            } else {
+                contextPrompt = "Balas santai kayak tongkrongan."
+            }
 
             const response = await axios.post(
                 'https://api.openai.com/v1/chat/completions',
@@ -98,19 +82,12 @@ client.on('message', async (msg) => {
                     messages: [
                         {
                             role: "system",
-                            content: "Lu anak tongkrongan WA. Komentarin gambar dengan santai, lucu, roasting dikit."
+                            content: "Lu anak tongkrongan WA. Santai, lucu, 1 kalimat."
                         },
+                        ...groupMemory[from],
                         {
                             role: "user",
-                            content: [
-                                { type: "text", text: "Komentarin gambar ini." },
-                                {
-                                    type: "image_url",
-                                    image_url: {
-                                        url: `data:${media.mimetype};base64,${media.data}`
-                                    }
-                                }
-                            ]
+                            content: contextPrompt + "\n\nPesan: " + text
                         }
                     ],
                     max_tokens: 60
@@ -121,92 +98,16 @@ client.on('message', async (msg) => {
                         'Content-Type': 'application/json'
                     }
                 }
-            );
+            )
 
-            const reply = response.data.choices[0].message.content;
-            return msg.reply(reply);
+            const reply = response.data.choices[0].message.content
+
+            await sock.sendMessage(from, { text: reply })
+
+        } catch (err) {
+            console.log("ERROR:", err.message)
         }
+    })
+}
 
-        // ================= HANDLE TEXT
-        let text = msg.body.trim();
-        if (!text || text.length > 150) return;
-
-        if (!groupMemory[msg.from]) {
-            groupMemory[msg.from] = [];
-        }
-
-        groupMemory[msg.from].push({
-            role: "user",
-            content: text
-        });
-
-        groupMemory[msg.from] = groupMemory[msg.from].slice(-10);
-
-        const lower = text.toLowerCase();
-
-        let contextPrompt = "";
-
-        if (
-            lower.includes('?') ||
-            lower.includes('gimana') ||
-            lower.includes('kenapa') ||
-            lower.includes('menurut')
-        ) {
-            contextPrompt = "Ini pertanyaan. Jawab santai, jelas.";
-        } else if (
-            lower.includes('capek') ||
-            lower.includes('sedih') ||
-            lower.includes('stress')
-        ) {
-            contextPrompt = "Ini curhat. Balas kayak temen.";
-        } else if (
-            lower.includes('jelek') ||
-            lower.includes('alay') ||
-            lower.includes('norak')
-        ) {
-            contextPrompt = "Roasting lucu, santai.";
-        } else {
-            contextPrompt = "Balas santai kayak tongkrongan.";
-        }
-
-        const messages = [
-            {
-                role: "system",
-                content: "Lu anak tongkrongan WA. Santai, lucu, kadang savage. Jawaban max 1 kalimat."
-            },
-            ...groupMemory[msg.from],
-            {
-                role: "user",
-                content: contextPrompt + "\n\nPesan terbaru: " + text
-            }
-        ];
-
-        const response = await axios.post(
-            'https://api.openai.com/v1/chat/completions',
-            {
-                model: "gpt-4o-mini",
-                messages: messages,
-                max_tokens: 60
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${API_KEY}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-        const reply = response.data.choices[0].message.content;
-
-        msg.reply(reply);
-
-    } catch (err) {
-        console.log(err.message);
-    }
-});
-
-// ================= START
-client.initialize();
-
-// ================= ANTI EXIT
-setInterval(() => {}, 1000);
+startBot()
