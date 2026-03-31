@@ -7,6 +7,8 @@ const path = require('path');
 
 const API_KEY = process.env.API_KEY;
 
+let botId; // ID WA bot
+
 // ===== CLIENT
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -28,13 +30,32 @@ let lastReplyTime = 0;
 
 // ===== STICKERS
 const stickersFolder = path.join(__dirname,'stickers');
-let stickerList = fs.existsSync(stickersFolder)?fs.readdirSync(stickersFolder).filter(file=>/\.(png|jpg|jpeg|webp)$/i.test(file)).map(file=>path.join(stickersFolder,file)):[];
-function pickRandomSticker(){ if(stickerList.length===0) return null; return stickerList[Math.floor(Math.random()*stickerList.length)]; }
-async function sendSticker(msg){ try{ const stickerPath = pickRandomSticker(); if(!stickerPath) return; const sticker = new Sticker(stickerPath,{pack:'Bot Tongkrongan',author:'Elit++',type:StickerTypes.FULL,quality:50}); const buffer = await sticker.toBuffer(); await msg.reply(buffer,undefined,{sendMediaAsSticker:true}); }catch(err){ console.log('Sticker error:',err.message); } }
+let stickerList = fs.existsSync(stickersFolder)
+    ? fs.readdirSync(stickersFolder).filter(file => /\.(png|jpg|jpeg|webp)$/i.test(file))
+      .map(file => path.join(stickersFolder,file))
+    : [];
+function pickRandomSticker(){ 
+    if(stickerList.length===0) return null; 
+    return stickerList[Math.floor(Math.random()*stickerList.length)]; 
+}
+async function sendSticker(msg){ 
+    try{ 
+        const stickerPath = pickRandomSticker(); 
+        if(!stickerPath) return; 
+        const sticker = new Sticker(stickerPath,{
+            pack:'Bot Tongkrongan',
+            author:'Elit++',
+            type: StickerTypes.FULL,
+            quality:50
+        }); 
+        const buffer = await sticker.toBuffer(); 
+        await msg.reply(buffer, undefined, {sendMediaAsSticker:true}); 
+    }catch(err){ console.log('Sticker error:',err.message); } 
+}
 
 // ===== PROMPT
-function getSystemPrompt(mode){
-    return `Lu anak tongkrongan WA. Balas singkat, padat, logis, casual (yg, gitu, wkwk). Mode: ${mode}. Santai, kadang sarkas/roasting. Hanya 1-2 kalimat. Jawab sesuai topik dan relevan.`;
+function getSystemPrompt(){
+    return `Lu anak tongkrongan WA. Balas singkat, padat, logis, casual (yg, gitu, wkwk). Santai, kadang sarkas/roasting. 1-2 kalimat saja. Jawab sesuai topik dan relevan.`;
 }
 
 // ===== AI REQUEST
@@ -48,22 +69,42 @@ async function askAI(messages){
 }
 
 // ===== QR LOGIN
-client.on('qr',async qr=>{ const qrImage = await QRCode.toDataURL(qr); console.log(qrImage); });
-client.on('ready',()=>{ console.log('🔥 Bot ELIT++ SELEKTIF AKTIF'); });
+client.on('qr',async qr=>{
+    const qrImage = await QRCode.toDataURL(qr);
+    console.log(qrImage);
+});
+
+// ===== READY
+client.on('ready',async()=>{
+    const me = await client.info;
+    botId = me.wid._serialized; // simpan ID bot
+    console.log('🔥 Bot ELIT++ SELEKTIF AKTIF');
+});
+
+// ===== DISCONNECT
 client.on('disconnected',()=>{ client.initialize(); });
 
 // ===== MAIN
-client.on('message',async msg=>{
+client.on('message', async msg=>{
     try{
         if(!msg.from.endsWith('@g.us')) return;
         groupActivity[msg.from] = Date.now();
         const now = Date.now();
-        if(now-lastReplyTime<COOLDOWN) return;
+        if(now-lastReplyTime < COOLDOWN) return;
 
         const text = msg.body?.trim();
         const lower = text?.toLowerCase()||"";
-        const isReply = msg.hasQuotedMsg;
-        const isMention = msg.mentionedIds?.length>0;
+
+        // ===== CEK REPLY TO BOT =====
+        let isReplyToBot = false;
+        if(msg.hasQuotedMsg){
+            const quotedMsg = await msg.getQuotedMessage().catch(()=>null);
+            if(quotedMsg && quotedMsg.author === botId){
+                isReplyToBot = true;
+            }
+        }
+
+        const isMention = msg.mentionedIds?.includes(botId);
         const isSticker = msg.type==='sticker';
 
         // ===== CHECK KEYWORDS =====
@@ -72,24 +113,26 @@ client.on('message',async msg=>{
         const isJokes = lower.includes("haha")||lower.includes("wkwk")||lower.includes("jokes");
 
         // ===== SELEKTIF =====
-        const shouldReply = isReply||isMention||isQuestion||isJokes||isSticker;
+        const shouldReply = isReplyToBot || isMention || isSticker;
         if(!shouldReply) return;
 
         lastReplyTime = now;
 
         // ===== HANDLE STICKER =====
         if(isSticker){
-            setTimeout(()=>sendSticker(msg),Math.random()*2000+1000);
+            setTimeout(()=>sendSticker(msg), Math.random()*2000+1000);
             return;
         }
 
         // ===== HANDLE MEDIA =====
         if(msg.hasMedia){
             const media = await msg.downloadMedia().catch(()=>null);
-            if(media&&(media.mimetype.startsWith('image')||media.mimetype.startsWith('video'))){
-                if(isQuestion||isJokes||isReply||isMention){
-                    const mode = "normal";
-                    const reply = await askAI([{role:"system",content:getSystemPrompt(mode)+" Komenin media ini."},{role:"user",content:text||"Ada media"}]);
+            if(media && (media.mimetype.startsWith('image') || media.mimetype.startsWith('video'))){
+                if(isReplyToBot || isMention){
+                    const reply = await askAI([
+                        {role:"system", content:getSystemPrompt() },
+                        {role:"user", content:text||"Ada media"}
+                    ]);
                     msg.reply(reply);
                     return;
                 }
@@ -97,17 +140,16 @@ client.on('message',async msg=>{
         }
 
         // ===== HANDLE TEXT =====
-        if(text){
+        if(text && (isReplyToBot || isMention)){
             if(!groupMemory[msg.from]) groupMemory[msg.from]=[];
             groupMemory[msg.from].push({role:"user",content:text});
             groupMemory[msg.from]=groupMemory[msg.from].slice(-10);
 
-            const mode = "normal";
-            const reply = await askAI([{role:"system",content:getSystemPrompt(mode)},...groupMemory[msg.from]]);
+            const reply = await askAI([{role:"system",content:getSystemPrompt()}, ...groupMemory[msg.from]]);
             setTimeout(()=>{
                 msg.reply(reply);
                 if(Math.random()<0.25){ setTimeout(()=>sendSticker(msg),Math.random()*2000+1000); }
-            },Math.random()*3000+1000);
+            }, Math.random()*3000+1000);
         }
 
     }catch(err){ console.log('❌ Error:',err.message); }
@@ -119,14 +161,17 @@ setInterval(async()=>{
     for(let chat of chats){
         if(!chat.isGroup) continue;
         const last = groupActivity[chat.id._serialized]||0;
-        const diff=(Date.now()-last)/(1000*60*60);
-        if(diff>=4&&diff<=7&&Math.random()<0.5){
-            const text = await askAI([{role:"system",content:"Lu di grup sepi. Mulai obrolan random relevan topik tongkrongan."},{role:"user",content:"Mulai chat"}]);
+        const diff = (Date.now()-last)/(1000*60*60);
+        if(diff >=4 && diff <=7 && Math.random()<0.5){
+            const text = await askAI([
+                {role:"system",content:"Lu di grup sepi. Mulai obrolan random relevan topik tongkrongan."},
+                {role:"user",content:"Mulai chat"}
+            ]);
             chat.sendMessage(text);
-            groupActivity[chat.id._serialized]=Date.now();
+            groupActivity[chat.id._serialized] = Date.now();
         }
     }
-},30*60*1000);
+}, 30*60*1000);
 
 client.initialize();
 setInterval(()=>{},1000);
