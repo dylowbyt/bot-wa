@@ -1,16 +1,15 @@
 {
-  "name": "bot-wa",
+  "name": "bot-wa-elit",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Bot WhatsApp Tongkrongan ELIT++",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
-  "engines": {
-    "node": ">=18"
-  },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.0",
-    "axios": "^1.6.0"
+    "whatsapp-web.js": "^1.23.0",
+    "axios": "^1.6.0",
+    "wa-sticker-formatter": "^4.4.4",
+    "qrcode": "^1.5.4"
   }
 }
