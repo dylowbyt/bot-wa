@@ -1,3 +1,9 @@
+// ================= FIX CRYPTO (WAJIB PALING ATAS)
+import crypto from 'crypto'
+global.crypto = crypto.webcrypto
+globalThis.crypto = crypto.webcrypto
+
+// ================= IMPORT
 import baileys from '@whiskeysockets/baileys'
 import axios from 'axios'
 import fs from 'fs'
@@ -14,7 +20,7 @@ const groupMemory = {}
 const COOLDOWN = 10000
 let lastReplyTime = 0
 
-// ================= STICKER LIST
+// ================= STICKER
 const stickerFolder = './stickers'
 
 // ================= START BOT
@@ -27,7 +33,7 @@ const startBot = async () => {
         browser: ['Ubuntu', 'Chrome', '20.0.04']
     })
 
-    // ================= PAIRING CODE
+    // ================= PAIRING
     if (!sock.authState.creds.registered) {
         const code = await sock.requestPairingCode(OWNER_NUMBER)
         console.log("PAIRING CODE:", code)
@@ -35,7 +41,7 @@ const startBot = async () => {
 
     sock.ev.on('creds.update', saveCreds)
 
-    console.log("🚀 Bot ELIT++ START")
+    console.log("🚀 Bot starting...")
 
     // ================= AUTO RECONNECT
     sock.ev.on('connection.update', (update) => {
@@ -45,17 +51,17 @@ const startBot = async () => {
             const shouldReconnect =
                 lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut
 
-            console.log('❌ Disconnect, reconnecting...', shouldReconnect)
+            console.log('❌ Disconnect, reconnect...', shouldReconnect)
 
-            if (shouldReconnect) {
-                startBot()
-            }
-        } else if (connection === 'open') {
-            console.log('✅ Connected ke WhatsApp')
+            if (shouldReconnect) startBot()
+        }
+
+        if (connection === 'open') {
+            console.log('✅ Connected to WhatsApp')
         }
     })
 
-    // ================= MESSAGE HANDLER
+    // ================= MESSAGE
     sock.ev.on('messages.upsert', async ({ messages }) => {
         try {
             const msg = messages[0]
@@ -63,12 +69,12 @@ const startBot = async () => {
 
             const from = msg.key.remoteJid
 
-            // hanya grup
+            // hanya group
             if (!from.endsWith('@g.us')) return
 
             const now = Date.now()
 
-            // anti spam / anti banned
+            // anti spam
             if (now - lastReplyTime < COOLDOWN) return
             if (Math.random() > 0.65) return
 
@@ -78,14 +84,13 @@ const startBot = async () => {
             if (Math.random() < 0.25) {
                 try {
                     const files = fs.readdirSync(stickerFolder)
-                    const random = files[Math.floor(Math.random() * files.length)]
-                    const buffer = fs.readFileSync(path.join(stickerFolder, random))
+                    if (files.length > 0) {
+                        const random = files[Math.floor(Math.random() * files.length)]
+                        const buffer = fs.readFileSync(path.join(stickerFolder, random))
 
-                    await sock.sendMessage(from, {
-                        sticker: buffer
-                    })
-
-                    return
+                        await sock.sendMessage(from, { sticker: buffer })
+                        return
+                    }
                 } catch (e) {
                     console.log("Sticker error:", e.message)
                 }
@@ -132,7 +137,7 @@ const startBot = async () => {
                     messages: [
                         {
                             role: "system",
-                            content: "Lu anak tongkrongan WA. Lucu, santai, kadang savage. 1 kalimat."
+                            content: "Lu anak tongkrongan WA. Santai, lucu, 1 kalimat."
                         },
                         ...groupMemory[from],
                         {
