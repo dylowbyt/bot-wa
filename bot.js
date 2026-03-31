@@ -4,7 +4,7 @@ const axios = require('axios');
 const { Sticker, StickerTypes } = require('wa-sticker-formatter');
 
 // ================= CONFIG
-const API_KEY = "ISI_API_KEY_KAMU";
+const API_KEY = "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";
 
 const client = new Client({
     authStrategy: new LocalAuth(),
