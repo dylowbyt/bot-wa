@@ -6,7 +6,7 @@ const QRCode = require('qrcode');
 // ================= CONFIG
 const API_KEY = process.env.API_KEY;
 
-// ================= CLIENT (FIX RAILWAY CHROMIUM)
+// ================= CLIENT
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -26,12 +26,25 @@ const client = new Client({
 
 // ================= MEMORY
 const groupMemory = {};
+const groupActivity = {};
 
 // ================= ANTI SPAM
 const COOLDOWN = 8000;
 let lastReplyTime = 0;
 
-// ================= STIKER LIST
+// ================= MODE
+const modes = ["normal", "sarkas", "roasting"];
+
+function randomMode() {
+    return modes[Math.floor(Math.random() * modes.length)];
+}
+
+function allowRoasting(text) {
+    const t = text.toLowerCase();
+    return t.includes("wkwk") || t.includes("anjir") || t.includes("ngaco");
+}
+
+// ================= STIKER
 const stickerList = [
     './stickers/ketawa.png',
     './stickers/ngakak.png',
@@ -39,7 +52,6 @@ const stickerList = [
     './stickers/komik.png'
 ];
 
-// ================= FUNCTION STIKER
 async function sendSticker(msg) {
     try {
         const randomSticker = stickerList[Math.floor(Math.random() * stickerList.length)];
@@ -59,99 +71,151 @@ async function sendSticker(msg) {
     }
 }
 
-// ================= QR LOGIN (FIX LINK)
-client.on('qr', async (qr) => {
-    console.log('📱 QR dibuat...');
+// ================= PROMPT
+function getSystemPrompt(mode) {
+    return `
+Lu adalah member grup WhatsApp.
 
-    try {
-        const qrImage = await QRCode.toDataURL(qr);
-        console.log('\n👉 Buka link ini di browser:\n');
-        console.log(qrImage);
-    } catch (err) {
-        console.log('QR error:', err.message);
-    }
+Gaya:
+- Bahasa tongkrongan (lu, gw, anjir, wkwk)
+- Santai, kayak anak TikTok
+- 1-2 kalimat aja
+
+Mode: ${mode}
+
+Aturan:
+- normal → santai
+- sarkas → nyindir halus
+- roasting → ngeledek lucu (jangan jahat)
+
+Hindari:
+- bahas fisik / agama / keluarga
+- terlalu panjang
+
+Contoh:
+- "anjir serius lu?"
+- "lah kok bisa gitu sih"
+- "lu kalo jadi wifi sinyal E terus dah"
+`;
+}
+
+// ================= AI REQUEST
+async function askAI(messages) {
+    const res = await axios.post(
+        'https://api.openai.com/v1/chat/completions',
+        {
+            model: "gpt-4o-mini",
+            messages,
+            max_tokens: 60
+        },
+        {
+            headers: {
+                'Authorization': `Bearer ${API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        }
+    );
+
+    return res.data.choices[0].message.content;
+}
+
+// ================= QR
+client.on('qr', async (qr) => {
+    const qrImage = await QRCode.toDataURL(qr);
+    console.log(qrImage);
 });
 
 // ================= READY
 client.on('ready', () => {
-    console.log('🔥 Bot ELIT++ aktif');
+    console.log('🔥 Bot ELIT++ SUPER AKTIF');
 });
 
-// ================= DISCONNECT AUTO RECONNECT
-client.on('disconnected', (reason) => {
-    console.log('❌ Disconnect:', reason);
-    console.log('🔄 Reconnecting...');
+// ================= DISCONNECT
+client.on('disconnected', () => {
     client.initialize();
 });
 
-// ================= MAIN LOGIC
+// ================= MAIN
 client.on('message', async (msg) => {
     try {
         if (!msg.from.endsWith('@g.us')) return;
 
+        const chat = await msg.getChat();
+        groupActivity[msg.from] = Date.now();
+
         const now = Date.now();
         if (now - lastReplyTime < COOLDOWN) return;
 
-        if (Math.random() > 0.6) return;
-
-        lastReplyTime = now;
-
         // ================= STIKER RANDOM
-        if (Math.random() < 0.25) {
+        if (Math.random() < 0.15) {
             return sendSticker(msg);
         }
 
-        // ================= HANDLE MEDIA (VISION)
+        // ================= MEDIA (VISION)
         if (msg.hasMedia) {
             const media = await msg.downloadMedia();
 
-            if (!media || !media.mimetype.startsWith('image')) return;
+            if (media.mimetype.startsWith('image')) {
+                if (Math.random() > 0.6) return;
 
-            if (Math.random() > 0.5) return;
+                const mode = randomMode();
 
-            const response = await axios.post(
-                'https://api.openai.com/v1/chat/completions',
-                {
-                    model: "gpt-4o-mini",
-                    messages: [
-                        {
-                            role: "system",
-                            content: "Lu anak tongkrongan WA. Komentarin gambar dengan santai, lucu, roasting dikit."
-                        },
-                        {
-                            role: "user",
-                            content: [
-                                { type: "text", text: "Komentarin gambar ini." },
-                                {
-                                    type: "image_url",
-                                    image_url: {
-                                        url: `data:${media.mimetype};base64,${media.data}`
-                                    }
+                const reply = await askAI([
+                    {
+                        role: "system",
+                        content: getSystemPrompt(mode) + " Komenin foto ini secara spontan."
+                    },
+                    {
+                        role: "user",
+                        content: [
+                            { type: "text", text: "Komentarin gambar ini" },
+                            {
+                                type: "image_url",
+                                image_url: {
+                                    url: `data:${media.mimetype};base64,${media.data}`
                                 }
-                            ]
-                        }
-                    ],
-                    max_tokens: 60
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${API_KEY}`,
-                        'Content-Type': 'application/json'
+                            }
+                        ]
                     }
-                }
-            );
+                ]);
 
-            const reply = response.data.choices[0].message.content;
-            return msg.reply(reply);
+                return msg.reply(reply);
+            }
+
+            if (media.mimetype.startsWith('video')) {
+                if (Math.random() > 0.7) return;
+
+                const reply = await askAI([
+                    {
+                        role: "system",
+                        content: "Lu anak tongkrongan. React ke video santai & lucu."
+                    },
+                    {
+                        role: "user",
+                        content: msg.body || "Ada video di grup"
+                    }
+                ]);
+
+                return msg.reply(reply);
+            }
         }
 
-        // ================= HANDLE TEXT
-        let text = msg.body.trim();
+        // ================= TEXT
+        const text = msg.body.trim();
         if (!text || text.length > 150) return;
 
-        if (!groupMemory[msg.from]) {
-            groupMemory[msg.from] = [];
+        const isReply = msg.hasQuotedMsg;
+        const isMention = msg.mentionedIds.length > 0;
+
+        // filter biar gak semua di respon
+        if (!isReply && !isMention && Math.random() > 0.5) return;
+
+        let mode = randomMode();
+        if (mode === "roasting" && !allowRoasting(text)) {
+            mode = "normal";
         }
+
+        if (!groupMemory[msg.from]) groupMemory[msg.from] = [];
 
         groupMemory[msg.from].push({
             role: "user",
@@ -160,68 +224,51 @@ client.on('message', async (msg) => {
 
         groupMemory[msg.from] = groupMemory[msg.from].slice(-10);
 
-        const lower = text.toLowerCase();
+        const reply = await askAI([
+            { role: "system", content: getSystemPrompt(mode) },
+            ...groupMemory[msg.from]
+        ]);
 
-        let contextPrompt = "";
+        lastReplyTime = now;
 
-        if (
-            lower.includes('?') ||
-            lower.includes('gimana') ||
-            lower.includes('kenapa') ||
-            lower.includes('menurut')
-        ) {
-            contextPrompt = "Ini pertanyaan. Jawab santai, jelas.";
-        } else if (
-            lower.includes('capek') ||
-            lower.includes('sedih') ||
-            lower.includes('stress')
-        ) {
-            contextPrompt = "Ini curhat. Balas kayak temen.";
-        } else if (
-            lower.includes('jelek') ||
-            lower.includes('alay') ||
-            lower.includes('norak')
-        ) {
-            contextPrompt = "Roasting lucu, santai.";
-        } else {
-            contextPrompt = "Balas santai kayak tongkrongan.";
-        }
-
-        const messages = [
-            {
-                role: "system",
-                content: "Lu anak tongkrongan WA. Santai, lucu, kadang savage. Jawaban max 1 kalimat."
-            },
-            ...groupMemory[msg.from],
-            {
-                role: "user",
-                content: contextPrompt + "\n\nPesan terbaru: " + text
-            }
-        ];
-
-        const response = await axios.post(
-            'https://api.openai.com/v1/chat/completions',
-            {
-                model: "gpt-4o-mini",
-                messages: messages,
-                max_tokens: 60
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${API_KEY}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-        const reply = response.data.choices[0].message.content;
-
-        msg.reply(reply);
+        setTimeout(() => {
+            msg.reply(reply);
+        }, Math.random() * 3000 + 1000);
 
     } catch (err) {
         console.log('❌ Error:', err.message);
     }
 });
+
+// ================= AUTO NIMBRUNG
+setInterval(async () => {
+    const chats = await client.getChats();
+
+    for (let chat of chats) {
+        if (!chat.isGroup) continue;
+
+        const last = groupActivity[chat.id._serialized] || 0;
+        const diff = (Date.now() - last) / (1000 * 60 * 60);
+
+        if (diff >= 4 && diff <= 7) {
+            if (Math.random() > 0.5) continue;
+
+            const text = await askAI([
+                {
+                    role: "system",
+                    content: "Lu di grup sepi. Mulai obrolan random gaya tongkrongan."
+                },
+                {
+                    role: "user",
+                    content: "Mulai chat"
+                }
+            ]);
+
+            chat.sendMessage(text);
+            groupActivity[chat.id._serialized] = Date.now();
+        }
+    }
+}, 30 * 60 * 1000);
 
 // ================= START
 client.initialize();
