@@ -1,17 +1,15 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
 const axios = require('axios');
 const { Sticker, StickerTypes } = require('wa-sticker-formatter');
 
 // ================= CONFIG
 const API_KEY = process.env.API_KEY;
 
-// ================= CLIENT (FIX RAILWAY)
+// ================= CLIENT (FIX RAILWAY TANPA PATH)
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
-        executablePath: '/usr/bin/chromium',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
@@ -56,7 +54,7 @@ async function sendSticker(msg) {
     }
 }
 
-// ================= QR LOGIN (FIX BIAR MUNCUL DI LOG)
+// ================= QR LOGIN
 client.on('qr', (qr) => {
     console.log('SCAN QR INI:');
     console.log(qr);
