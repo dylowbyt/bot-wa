@@ -33,19 +33,29 @@ const startBot = async () => {
         browser: ['Ubuntu', 'Chrome', '20.0.04']
     })
 
-    // ================= PAIRING
-    if (!sock.authState.creds.registered) {
-        const code = await sock.requestPairingCode(OWNER_NUMBER)
-        console.log("PAIRING CODE:", code)
-    }
-
-    sock.ev.on('creds.update', saveCreds)
-
     console.log("🚀 Bot starting...")
 
-    // ================= AUTO RECONNECT
-    sock.ev.on('connection.update', (update) => {
+    // ================= CONNECTION + PAIRING FIX
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update
+
+        if (connection === 'connecting') {
+            console.log('⏳ Connecting...')
+        }
+
+        if (connection === 'open') {
+            console.log('✅ Connected to WhatsApp')
+        }
+
+        // 🔑 pairing HARUS DI SINI
+        if (!sock.authState.creds.registered) {
+            try {
+                const code = await sock.requestPairingCode(OWNER_NUMBER)
+                console.log("PAIRING CODE:", code)
+            } catch (err) {
+                console.log("Pairing error:", err.message)
+            }
+        }
 
         if (connection === 'close') {
             const shouldReconnect =
@@ -55,13 +65,11 @@ const startBot = async () => {
 
             if (shouldReconnect) startBot()
         }
-
-        if (connection === 'open') {
-            console.log('✅ Connected to WhatsApp')
-        }
     })
 
-    // ================= MESSAGE
+    sock.ev.on('creds.update', saveCreds)
+
+    // ================= MESSAGE HANDLER
     sock.ev.on('messages.upsert', async ({ messages }) => {
         try {
             const msg = messages[0]
@@ -74,7 +82,7 @@ const startBot = async () => {
 
             const now = Date.now()
 
-            // anti spam
+            // anti spam / anti banned
             if (now - lastReplyTime < COOLDOWN) return
             if (Math.random() > 0.65) return
 
