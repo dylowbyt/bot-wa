@@ -18,7 +18,9 @@
             "libxrandr",
             "libgbm",
             "pango",
-            "cairo"
+            "cairo",
+            "libdrm",
+            "libxcb"
           ]
         }
       }
