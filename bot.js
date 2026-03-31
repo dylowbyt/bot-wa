@@ -2,6 +2,8 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const axios = require('axios');
 const { Sticker, StickerTypes } = require('wa-sticker-formatter');
 const QRCode = require('qrcode');
+const fs = require('fs');
+const path = require('path');
 
 // ================= CONFIG
 const API_KEY = process.env.API_KEY;
@@ -40,30 +42,41 @@ function allowRoasting(text) {
     return t.includes("wkwk") || t.includes("anjir") || t.includes("ngaco");
 }
 
-// ================= STIKER
-const stickerList = [
-    './stickers/ketawa.png',
-    './stickers/ngakak.png',
-    './stickers/roasting.png',
-    './stickers/komik.png'
-];
+// ================= STICKERS RANDOM
+const stickersFolder = path.join(__dirname, 'stickers');
+let stickerList = fs.existsSync(stickersFolder) ? 
+    fs.readdirSync(stickersFolder)
+        .filter(file => /\.(png|jpg|jpeg)$/i.test(file))
+        .map(file => path.join(stickersFolder, file))
+    : [];
+
+function pickRandomSticker() {
+    if (stickerList.length === 0) return null;
+    return stickerList[Math.floor(Math.random() * stickerList.length)];
+}
+
+// ================= SEND STICKER
 async function sendSticker(msg) {
     try {
-        const randomSticker = stickerList[Math.floor(Math.random() * stickerList.length)];
-        const sticker = new Sticker(randomSticker, {
+        const stickerPath = pickRandomSticker();
+        if (!stickerPath) return;
+
+        const sticker = new Sticker(stickerPath, {
             pack: 'Bot Tongkrongan',
             author: 'Elit++',
             type: StickerTypes.FULL,
             quality: 50
         });
+
         const buffer = await sticker.toBuffer();
         await msg.reply(buffer, undefined, { sendMediaAsSticker: true });
+
     } catch (err) {
         console.log('Sticker error:', err.message);
     }
 }
 
-// ================= PROMPT
+// ================= SYSTEM PROMPT
 function getSystemPrompt(mode) {
     return `
 Lu adalah member grup WhatsApp.
@@ -83,11 +96,6 @@ Aturan:
 Hindari:
 - bahas fisik / agama / keluarga
 - terlalu panjang
-
-Contoh:
-- "anjir serius lu?"
-- "lah kok bisa gitu sih"
-- "lu kalo jadi wifi sinyal E terus dah"
 `;
 }
 
@@ -177,7 +185,6 @@ client.on('message', async (msg) => {
         setTimeout(() => {
             msg.reply(reply);
 
-            // kirim stiker kadang-kadang setelah chat
             if (Math.random() < 0.25) {
                 setTimeout(() => sendSticker(msg), Math.random() * 2000 + 1000);
             }
@@ -186,7 +193,7 @@ client.on('message', async (msg) => {
     } catch (err) { console.log('❌ Error:', err.message); }
 });
 
-// ================= AUTO NIMBRUNG (GRUP SEPI)
+// ================= AUTO NIMBRUNG
 setInterval(async () => {
     const chats = await client.getChats();
 
