@@ -1,19 +1,19 @@
-// ================= FIX CRYPTO (WAJIB)
+// ================= FIX CRYPTO
 import crypto from 'crypto'
 global.crypto = crypto.webcrypto
 globalThis.crypto = crypto.webcrypto
 
 // ================= IMPORT
 import baileys from '@whiskeysockets/baileys'
-import axios from 'axios'
 import fs from 'fs'
+import axios from 'axios'
 import path from 'path'
 
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = baileys
 
 // ================= CONFIG
-const API_KEY = process.env.API_KEY
 const OWNER_NUMBER = "6285285636317"
+const API_KEY = process.env.API_KEY
 
 // ================= MEMORY
 const groupMemory = {}
@@ -30,31 +30,17 @@ const startBot = async () => {
     const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        browser: ['Ubuntu', 'Chrome', '20.0.04'],
         connectTimeoutMs: 60000,
-        keepAliveIntervalMs: 10000
+        keepAliveIntervalMs: 10000,
+        browser: ['Ubuntu', 'Chrome', '20.0.04']
     })
 
     console.log("🚀 Bot starting...")
 
-    // ================= FORCE PAIRING (PALING AMAN)
-    setTimeout(async () => {
-        if (!sock.authState.creds.registered) {
-            try {
-                const code = await sock.requestPairingCode(OWNER_NUMBER)
-                console.log("\n======================")
-                console.log("PAIRING CODE:", code)
-                console.log("======================\n")
-            } catch (err) {
-                console.log("❌ Pairing error:", err.message)
-            }
-        } else {
-            console.log("✔ Sudah login, skip pairing")
-        }
-    }, 8000)
+    let pairingDone = false
 
     // ================= CONNECTION
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect } = update
 
         if (connection === 'connecting') {
@@ -63,6 +49,26 @@ const startBot = async () => {
 
         if (connection === 'open') {
             console.log('✅ Connected ke WhatsApp')
+
+            // 🔑 PAIRING SUPER AMAN (ANTI 405)
+            if (!sock.authState.creds.registered && !pairingDone) {
+                pairingDone = true
+
+                console.log("⏳ Tunggu 15 detik sebelum pairing...")
+
+                setTimeout(async () => {
+                    try {
+                        const code = await sock.requestPairingCode(OWNER_NUMBER)
+
+                        console.log("\n==============================")
+                        console.log("PAIRING CODE:", code)
+                        console.log("==============================\n")
+
+                    } catch (err) {
+                        console.log("❌ Pairing error:", err.message)
+                    }
+                }, 15000) // 15 DETIK (WAJIB BIAR GAK 405)
+            }
         }
 
         if (connection === 'close') {
@@ -70,18 +76,19 @@ const startBot = async () => {
 
             console.log('❌ Disconnect:', reason)
 
+            // ⛔ kasih jeda biar gak ke-block
             if (reason !== DisconnectReason.loggedOut) {
-                console.log('🔄 Reconnecting...')
-                setTimeout(startBot, 5000)
+                console.log('⏳ Reconnect 15 detik...')
+                setTimeout(startBot, 15000)
             } else {
-                console.log('⚠️ Logout! Hapus folder session')
+                console.log('⚠️ Logout! hapus session')
             }
         }
     })
 
     sock.ev.on('creds.update', saveCreds)
 
-    // ================= MESSAGE HANDLER
+    // ================= MESSAGE HANDLER (AKTIF SETELAH LOGIN)
     sock.ev.on('messages.upsert', async ({ messages }) => {
         try {
             const msg = messages[0]
@@ -123,7 +130,7 @@ const startBot = async () => {
             text = text.trim()
             if (text.length > 150) return
 
-            // ================= MEMORY CHAT
+            // ================= MEMORY
             if (!groupMemory[from]) groupMemory[from] = []
 
             groupMemory[from].push({
@@ -133,23 +140,15 @@ const startBot = async () => {
 
             groupMemory[from] = groupMemory[from].slice(-10)
 
-            const lower = text.toLowerCase()
-
-            let mode = "Santai tongkrongan."
-
-            if (lower.includes('?')) mode = "Jawab santai & jelas."
-            if (lower.includes('sedih')) mode = "Balas kayak temen support."
-            if (lower.includes('jelek')) mode = "Roasting santai lucu."
-
-            // ================= AI RESPONSE
+            // ================= AI
             const res = await axios.post(
                 'https://api.openai.com/v1/chat/completions',
                 {
                     model: "gpt-4o-mini",
                     messages: [
-                        { role: "system", content: "Lu anak tongkrongan WA, lucu, 1 kalimat." },
+                        { role: "system", content: "Lu anak tongkrongan WA, santai, lucu, 1 kalimat." },
                         ...groupMemory[from],
-                        { role: "user", content: mode + "\n\nPesan: " + text }
+                        { role: "user", content: text }
                     ],
                     max_tokens: 60
                 },
