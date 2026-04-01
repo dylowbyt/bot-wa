@@ -2,8 +2,6 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const { Sticker, StickerTypes } = require('wa-sticker-formatter');
 const axios = require('axios');
 const QRCode = require('qrcode');
-const fs = require('fs');
-const path = require('path');
 
 // ==================== CONFIG ====================
 const API_KEY = process.env.API_KEY;
@@ -13,16 +11,15 @@ let botId;
 const puppeteerOptions = {
     headless: true,
     args: [
-        '--no-sandbox', // penting untuk root
+        '--no-sandbox',               // wajib untuk root/admin safe
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--disable-web-security',
         '--no-first-run',
         '--no-zygote'
-    ],
-    // Fallback executablePath
-    executablePath: process.env.CHROME_PATH || '/usr/bin/chromium-browser'
+    ]
+    // executablePath dihapus → Puppeteer akan auto-download Chromium
 };
 
 // ==================== CLIENT ====================
