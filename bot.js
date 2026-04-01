@@ -2,21 +2,40 @@ const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const { Sticker, StickerTypes } = require('wa-sticker-formatter');
 const axios = require('axios');
 const QRCode = require('qrcode');
+const fs = require('fs');
+const path = require('path');
 
+// ==================== CONFIG ====================
 const API_KEY = process.env.API_KEY;
 let botId;
 
+// ==================== PUPPETEER OPTIONS ====================
+const puppeteerOptions = {
+    headless: true,
+    args: [
+        '--no-sandbox', // penting untuk root
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--no-first-run',
+        '--no-zygote'
+    ],
+    // Fallback executablePath
+    executablePath: process.env.CHROME_PATH || '/usr/bin/chromium-browser'
+};
+
+// ==================== CLIENT ====================
 const client = new Client({
     authStrategy: new LocalAuth(),
-    puppeteer: { headless: true }
+    puppeteer: puppeteerOptions
 });
 
-// ===== CHATGPT PROMPT =====
+// ==================== CHATGPT ====================
 function getSystemPrompt(){
-    return `Kamu ChatGPT serba bisa untuk programmer dan pertanyaan umum, logis, jelas, rapi, bisa buat coding HTML/JS/game, atau menjawab pertanyaan biasa. Gunakan multi-line code untuk kode, jawab singkat & jelas untuk pertanyaan biasa.`;
+    return `Kamu ChatGPT serba bisa untuk programmer dan pertanyaan umum, logis, jelas, rapi, bisa buat coding HTML/JS/game, atau menjawab pertanyaan biasa. Gunakan multi-line code untuk kode, jawaban singkat & jelas untuk pertanyaan umum.`;
 }
 
-// ===== AI REQUEST =====
 async function askAI(question){
     try{
         const res = await axios.post('https://api.openai.com/v1/chat/completions',{
@@ -37,7 +56,7 @@ async function askAI(question){
     }
 }
 
-// ===== CREATE STICKER =====
+// ==================== STICKER ====================
 async function createStickerFromMedia(msg, animated=false){
     if(!msg.hasMedia) return false;
     const media = await msg.downloadMedia().catch(()=>null);
@@ -57,7 +76,7 @@ async function createStickerFromMedia(msg, animated=false){
     }
 }
 
-// ===== GENERATE IMAGE =====
+// ==================== IMAGE / VIDEO ====================
 async function generateImageFromText(prompt){
     try{
         const res = await axios.post('https://api.openai.com/v1/images/generations',{
@@ -76,17 +95,16 @@ async function generateImageFromText(prompt){
     }
 }
 
-// ===== GENERATE VIDEO (placeholder) =====
 async function generateVideoFromText(prompt){
     try{
-        return null;
+        return null; // Placeholder
     }catch(err){
         console.log('❌ Video generation error:', err.message);
         return null;
     }
 }
 
-// ===== QR LOGIN =====
+// ==================== QR LOGIN ====================
 client.on('qr', async qr=>{
     const qrImage = await QRCode.toDataURL(qr);
     console.log('Scan QR ini:', qrImage);
@@ -94,29 +112,27 @@ client.on('qr', async qr=>{
 
 client.on('ready',()=>{
     botId = client.info.wid._serialized;
-    console.log('🔥 Bot ChatGPT siap dengan hashtag #bot!');
+    console.log('🔥 Bot ChatGPT siap (#bot trigger)!');
 });
 
-client.on('disconnected',()=>{
+client.on('disconnected', ()=>{
     console.log('⚠️ Bot disconnected, mencoba reconnect...');
     setTimeout(()=>client.initialize(),5000);
 });
 
-// ===== MESSAGE HANDLER =====
+// ==================== MESSAGE HANDLER ====================
 client.on('message', async msg=>{
     try{
         if(!msg.body && !msg.hasMedia) return;
         const text = msg.body?.trim() || '';
 
-        // ===== CEK HASHTAG / TAG =====
         const lowerText = text.toLowerCase();
         const isTagged = lowerText.includes('#bot') || (Array.isArray(msg._data?.mentionedJid) && msg._data.mentionedJid.includes(botId));
-        if(!isTagged) return; // bot hanya merespon jika ada hashtag / di tag
+        if(!isTagged) return;
 
-        // ===== REMOVE HASHTAG DARI TEXT =====
         const cleanText = lowerText.replace('#bot','').trim();
 
-        // ===== SEMUA PERINTAH KHUSUS =====
+        // ----- STICKER -----
         if(cleanText.startsWith('stiker')){
             const success = await createStickerFromMedia(msg);
             if(!success) msg.reply('Kirim foto/gambar dulu agar bisa dibuat stiker.');
@@ -129,6 +145,7 @@ client.on('message', async msg=>{
             return;
         }
 
+        // ----- GENERATE FOTO -----
         if(cleanText.startsWith('generatefoto')){
             const prompt = cleanText.slice(12).trim();
             if(!prompt) return msg.reply('Tulis prompt setelah generatefoto');
@@ -142,6 +159,7 @@ client.on('message', async msg=>{
             return;
         }
 
+        // ----- GENERATE VIDEO -----
         if(cleanText.startsWith('generatevidio')){
             const prompt = cleanText.slice(13).trim();
             if(!prompt) return msg.reply('Tulis prompt setelah generatevidio');
@@ -155,7 +173,7 @@ client.on('message', async msg=>{
             return;
         }
 
-        // ===== SEMUA LAINNYA → ChatGPT menjawab pertanyaan, coding, HTML, game, dll =====
+        // ----- SEMUA LAINNYA → ChatGPT -----
         if(cleanText){
             const reply = await askAI(cleanText);
             await msg.reply(reply);
@@ -167,4 +185,11 @@ client.on('message', async msg=>{
     }
 });
 
-client.initialize();
+// ==================== INITIALIZE ====================
+(async ()=>{
+    try{
+        await client.initialize();
+    }catch(err){
+        console.log('❌ Failed to initialize client:', err.message);
+    }
+})();
