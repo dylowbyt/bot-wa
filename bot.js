@@ -8,7 +8,7 @@ const path = require('path');
 const API_KEY = process.env.API_KEY;
 let botId;
 
-// ===== CLIENT
+// ===== CLIENT =====
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
@@ -21,13 +21,13 @@ const client = new Client({
     }
 });
 
-// ===== MEMORY & ACTIVITY
+// ===== MEMORY & ACTIVITY =====
 const groupMemory = {};
 const groupActivity = {};
-const COOLDOWN = 3000; // 3 detik
+const COOLDOWN = 3000; 
 let lastReplyTime = 0;
 
-// ===== STICKERS
+// ===== STICKERS =====
 const stickersFolder = path.join(__dirname,'stickers');
 let stickerList = fs.existsSync(stickersFolder)
     ? fs.readdirSync(stickersFolder).filter(file => /\.(png|jpg|jpeg|webp)$/i.test(file))
@@ -52,12 +52,12 @@ async function sendSticker(msg){
     }catch(err){ console.log('Sticker error:',err.message); } 
 }
 
-// ===== PROMPT
+// ===== PROMPT =====
 function getSystemPrompt(){
     return `Lu anak tongkrongan WA. Balas singkat, padat, logis, casual (yg, gitu, wkwk). Santai, kadang sarkas/roasting. Jawaban max 1-2 kalimat. Jawab sesuai topik dan relevan.`;
 }
 
-// ===== AI REQUEST
+// ===== AI REQUEST =====
 async function askAI(messages){
     const res = await axios.post('https://api.openai.com/v1/chat/completions',{
         model:"gpt-4o-mini",
@@ -68,52 +68,53 @@ async function askAI(messages){
     return res.data.choices[0].message.content;
 }
 
-// ===== QR LOGIN
-client.on('qr',async qr=>{
+// ===== QR LOGIN =====
+client.on('qr', async qr => {
     const qrImage = await QRCode.toDataURL(qr);
     console.log(qrImage);
 });
 
-// ===== READY
-client.on('ready',async()=>{
+// ===== READY =====
+client.on('ready', async () => {
     const me = await client.info;
     botId = me.wid._serialized;
     console.log('🔥 Bot ELIT++ SELEKTIF AKTIF');
 });
 
-// ===== DISCONNECT
-client.on('disconnected',()=>{ client.initialize(); });
+// ===== DISCONNECT =====
+client.on('disconnected', ()=>{ client.initialize(); });
 
-// ===== MAIN
-client.on('message', async msg=>{
+// ===== MAIN MESSAGE HANDLER =====
+client.on('message', async msg => {
     try{
         if(!botId) return; // tunggu botId siap
-        if(!msg.from.endsWith('@g.us')) return;
+        if(!msg.from.endsWith('@g.us')) return; // group only
         groupActivity[msg.from] = Date.now();
+
         const now = Date.now();
-        if(now-lastReplyTime < COOLDOWN) return;
+        if(now - lastReplyTime < COOLDOWN) return;
 
         const text = msg.body?.trim();
         const lower = text?.toLowerCase()||"";
 
-        // ===== CEK REPLY TO BOT =====
+        // ===== CEK REPLY / MENTION =====
         let isReplyToBot = false;
         if(msg.hasQuotedMsg){
             const quotedMsg = await msg.getQuotedMessage().catch(()=>null);
-            if(quotedMsg && quotedMsg.author === botId){
-                isReplyToBot = true;
-            }
+            if(quotedMsg && quotedMsg.author === botId) isReplyToBot = true;
         }
-
         const isMention = msg.mentionedIds?.includes(botId);
         const isSticker = msg.type==='sticker';
 
-        // ===== CHECK KEYWORDS =====
-        const keywordPatterns = ["\\?","gimana","kenapa","menurut","bagus","bagusan","bagusnya","bingung","pilih","saran","pendapat"];
+        // ===== KEYWORDS =====
+        const keywordPatterns = [
+            "\\?","gimana","kenapa","menurut",
+            "bagus","bagusan","bagusnya","bingung",
+            "pilih","saran","pendapat"
+        ];
         const isQuestion = keywordPatterns.some(k => new RegExp(k,"i").test(lower));
         const isJokes = lower.includes("haha")||lower.includes("wkwk")||lower.includes("jokes");
 
-        // ===== SELEKTIF =====
         const shouldReply = isReplyToBot || isMention || isSticker || isQuestion || isJokes;
         if(!shouldReply) return;
 
@@ -131,7 +132,7 @@ client.on('message', async msg=>{
             if(media && (media.mimetype.startsWith('image') || media.mimetype.startsWith('video'))){
                 if(isReplyToBot || isMention || isQuestion || isJokes){
                     const reply = await askAI([
-                        {role:"system", content:getSystemPrompt() },
+                        {role:"system", content:getSystemPrompt()},
                         {role:"user", content:text||"Ada media"}
                     ]);
                     msg.reply(reply);
@@ -149,14 +150,14 @@ client.on('message', async msg=>{
             const reply = await askAI([{role:"system",content:getSystemPrompt()}, ...groupMemory[msg.from]]);
             setTimeout(()=>{
                 msg.reply(reply);
-                if(Math.random()<0.25){ setTimeout(()=>sendSticker(msg),Math.random()*2000+1000); }
+                if(Math.random()<0.25) setTimeout(()=>sendSticker(msg), Math.random()*2000+1000);
             }, Math.random()*2000+1000);
         }
 
     }catch(err){ console.log('❌ Error:',err.message); }
 });
 
-// ===== AUTO NIMBRUNG
+// ===== AUTO NIMBRUNG =====
 setInterval(async()=>{
     const chats = await client.getChats();
     for(let chat of chats){
