@@ -87,12 +87,9 @@ client.on('disconnected', ()=>{ client.initialize(); });
 // ===== MAIN MESSAGE HANDLER =====
 client.on('message', async msg => {
     try{
-        if(!botId) return; // tunggu botId siap
+        if(!botId) return;
         if(!msg.from.endsWith('@g.us')) return; // group only
         groupActivity[msg.from] = Date.now();
-
-        const now = Date.now();
-        if(now - lastReplyTime < COOLDOWN) return;
 
         const text = msg.body?.trim();
         const lower = text?.toLowerCase()||"";
@@ -112,13 +109,14 @@ client.on('message', async msg => {
             "bagus","bagusan","bagusnya","bingung",
             "pilih","saran","pendapat"
         ];
-        const isQuestion = keywordPatterns.some(k => new RegExp(k,"i").test(lower));
+        const isKeyword = keywordPatterns.some(k => new RegExp(k,"i").test(lower));
         const isJokes = lower.includes("haha")||lower.includes("wkwk")||lower.includes("jokes");
 
-        const shouldReply = isReplyToBot || isMention || isSticker || isQuestion || isJokes;
+        // ===== SELEKTIF TAPI Wajib REPLY KEYWORD =====
+        const shouldReply = isReplyToBot || isMention || isSticker || isKeyword || isJokes;
         if(!shouldReply) return;
 
-        lastReplyTime = now;
+        lastReplyTime = Date.now();
 
         // ===== HANDLE STICKER =====
         if(isSticker){
@@ -130,7 +128,7 @@ client.on('message', async msg => {
         if(msg.hasMedia){
             const media = await msg.downloadMedia().catch(()=>null);
             if(media && (media.mimetype.startsWith('image') || media.mimetype.startsWith('video'))){
-                if(isReplyToBot || isMention || isQuestion || isJokes){
+                if(isReplyToBot || isMention || isKeyword || isJokes){
                     const reply = await askAI([
                         {role:"system", content:getSystemPrompt()},
                         {role:"user", content:text||"Ada media"}
@@ -142,7 +140,7 @@ client.on('message', async msg => {
         }
 
         // ===== HANDLE TEXT =====
-        if(text && (isReplyToBot || isMention || isQuestion || isJokes)){
+        if(text && (isReplyToBot || isMention || isKeyword || isJokes)){
             if(!groupMemory[msg.from]) groupMemory[msg.from]=[];
             groupMemory[msg.from].push({role:"user",content:text});
             groupMemory[msg.from]=groupMemory[msg.from].slice(-10);
@@ -151,7 +149,7 @@ client.on('message', async msg => {
             setTimeout(()=>{
                 msg.reply(reply);
                 if(Math.random()<0.25) setTimeout(()=>sendSticker(msg), Math.random()*2000+1000);
-            }, Math.random()*2000+1000);
+            }, Math.random()*1000+500);
         }
 
     }catch(err){ console.log('❌ Error:',err.message); }
