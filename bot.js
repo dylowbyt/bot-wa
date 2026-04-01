@@ -13,7 +13,7 @@ const client = new Client({
 
 // ===== CHATGPT PROMPT =====
 function getSystemPrompt(){
-    return `Kamu ChatGPT untuk programmer, logis, detail, jelas, membantu menjawab pertanyaan coding dan programming. Gunakan multi-line code dengan format WA, balas rapi.`;
+    return `Kamu ChatGPT serba bisa untuk programmer dan pertanyaan umum, logis, jelas, rapi, bisa buat coding HTML/JS/game, atau menjawab pertanyaan biasa. Gunakan multi-line code untuk kode, jawab singkat & jelas untuk pertanyaan biasa.`;
 }
 
 // ===== AI REQUEST =====
@@ -25,14 +25,14 @@ async function askAI(question){
                 {role:"system", content:getSystemPrompt()},
                 {role:"user", content:question}
             ],
-            max_tokens:700
+            max_tokens:1000
         },{
             headers:{'Authorization': `Bearer ${API_KEY}`, 'Content-Type':'application/json'},
-            timeout:15000
+            timeout:30000
         });
         return res.data.choices[0].message.content;
     }catch(err){
-        console.log('❌ AI ERROR:',err.message);
+        console.log('❌ AI ERROR:', err.message);
         return 'Maaf, ada kesalahan saat memproses AI.';
     }
 }
@@ -76,11 +76,9 @@ async function generateImageFromText(prompt){
     }
 }
 
-// ===== GENERATE VIDEO (placeholder, jika ada API) =====
+// ===== GENERATE VIDEO (placeholder) =====
 async function generateVideoFromText(prompt){
     try{
-        // Jika OpenAI menyediakan video API, panggil di sini
-        // Untuk contoh, return null
         return null;
     }catch(err){
         console.log('❌ Video generation error:', err.message);
@@ -96,7 +94,7 @@ client.on('qr', async qr=>{
 
 client.on('ready',()=>{
     botId = client.info.wid._serialized;
-    console.log('🔥 Bot ChatGPT siap!');
+    console.log('🔥 Bot ChatGPT siap dengan hashtag #bot!');
 });
 
 client.on('disconnected',()=>{
@@ -108,26 +106,32 @@ client.on('disconnected',()=>{
 client.on('message', async msg=>{
     try{
         if(!msg.body && !msg.hasMedia) return;
-        const text = msg.body?.trim();
+        const text = msg.body?.trim() || '';
 
-        // ===== CASE 1: .stiker (media) =====
-        if(text?.startsWith('.stiker')){
+        // ===== CEK HASHTAG / TAG =====
+        const lowerText = text.toLowerCase();
+        const isTagged = lowerText.includes('#bot') || (Array.isArray(msg._data?.mentionedJid) && msg._data.mentionedJid.includes(botId));
+        if(!isTagged) return; // bot hanya merespon jika ada hashtag / di tag
+
+        // ===== REMOVE HASHTAG DARI TEXT =====
+        const cleanText = lowerText.replace('#bot','').trim();
+
+        // ===== SEMUA PERINTAH KHUSUS =====
+        if(cleanText.startsWith('stiker')){
             const success = await createStickerFromMedia(msg);
             if(!success) msg.reply('Kirim foto/gambar dulu agar bisa dibuat stiker.');
             return;
         }
 
-        // ===== CASE 2: .stikeranim (media animasi / WEBP) =====
-        if(text?.startsWith('.stikeranim')){
+        if(cleanText.startsWith('stikeranim')){
             const success = await createStickerFromMedia(msg,true);
             if(!success) msg.reply('Kirim video/gif dulu agar bisa dibuat stiker animasi.');
             return;
         }
 
-        // ===== CASE 3: .generatefoto =====
-        if(text?.startsWith('.generatefoto')){
-            const prompt = text.slice(13).trim();
-            if(!prompt) return msg.reply('Tulis prompt setelah .generatefoto');
+        if(cleanText.startsWith('generatefoto')){
+            const prompt = cleanText.slice(12).trim();
+            if(!prompt) return msg.reply('Tulis prompt setelah generatefoto');
             const imageUrl = await generateImageFromText(prompt);
             if(imageUrl){
                 const media = await MessageMedia.fromUrl(imageUrl);
@@ -138,10 +142,9 @@ client.on('message', async msg=>{
             return;
         }
 
-        // ===== CASE 4: .generatevidio =====
-        if(text?.startsWith('.generatevidio')){
-            const prompt = text.slice(13).trim();
-            if(!prompt) return msg.reply('Tulis prompt setelah .generatevidio');
+        if(cleanText.startsWith('generatevidio')){
+            const prompt = cleanText.slice(13).trim();
+            if(!prompt) return msg.reply('Tulis prompt setelah generatevidio');
             const videoUrl = await generateVideoFromText(prompt);
             if(videoUrl){
                 const media = await MessageMedia.fromUrl(videoUrl);
@@ -152,11 +155,9 @@ client.on('message', async msg=>{
             return;
         }
 
-        // ===== CASE 5: Semua chat diawali "." → ChatGPT =====
-        if(text?.startsWith('.') && !text.startsWith('.stiker') && !text.startsWith('.stikeranim') && !text.startsWith('.generatefoto') && !text.startsWith('.generatevidio')){
-            const question = text.slice(1).trim();
-            if(!question) return;
-            const reply = await askAI(question);
+        // ===== SEMUA LAINNYA → ChatGPT menjawab pertanyaan, coding, HTML, game, dll =====
+        if(cleanText){
+            const reply = await askAI(cleanText);
             await msg.reply(reply);
             return;
         }
