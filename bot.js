@@ -6,8 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const API_KEY = process.env.API_KEY;
-
-let botId; // ID WA bot
+let botId;
 
 // ===== CLIENT
 const client = new Client({
@@ -25,7 +24,7 @@ const client = new Client({
 // ===== MEMORY & ACTIVITY
 const groupMemory = {};
 const groupActivity = {};
-const COOLDOWN = 8000;
+const COOLDOWN = 3000; // 3 detik
 let lastReplyTime = 0;
 
 // ===== STICKERS
@@ -61,7 +60,8 @@ function getSystemPrompt(){
 // ===== AI REQUEST
 async function askAI(messages){
     const res = await axios.post('https://api.openai.com/v1/chat/completions',{
-        model:"gpt-4o-mini",messages,max_tokens:40
+        model:"gpt-4o-mini",
+        messages,max_tokens:40
     },{
         headers:{'Authorization':`Bearer ${API_KEY}`,'Content-Type':'application/json'}
     });
@@ -77,7 +77,7 @@ client.on('qr',async qr=>{
 // ===== READY
 client.on('ready',async()=>{
     const me = await client.info;
-    botId = me.wid._serialized; // simpan ID bot
+    botId = me.wid._serialized;
     console.log('🔥 Bot ELIT++ SELEKTIF AKTIF');
 });
 
@@ -87,6 +87,7 @@ client.on('disconnected',()=>{ client.initialize(); });
 // ===== MAIN
 client.on('message', async msg=>{
     try{
+        if(!botId) return; // tunggu botId siap
         if(!msg.from.endsWith('@g.us')) return;
         groupActivity[msg.from] = Date.now();
         const now = Date.now();
@@ -97,19 +98,19 @@ client.on('message', async msg=>{
 
         // ===== CEK REPLY TO BOT =====
         let isReplyToBot = false;
-        if(botId && msg.hasQuotedMsg){
+        if(msg.hasQuotedMsg){
             const quotedMsg = await msg.getQuotedMessage().catch(()=>null);
             if(quotedMsg && quotedMsg.author === botId){
                 isReplyToBot = true;
             }
         }
 
-        const isMention = botId && msg.mentionedIds?.includes(botId);
+        const isMention = msg.mentionedIds?.includes(botId);
         const isSticker = msg.type==='sticker';
 
         // ===== CHECK KEYWORDS =====
-        const keywords = ["?","gimana","kenapa","menurut","bagusan mana","bingung","pilih","saran dong","pendapat"];
-        const isQuestion = keywords.some(k => lower.includes(k));
+        const keywordPatterns = ["\\?","gimana","kenapa","menurut","bagus","bagusan","bagusnya","bingung","pilih","saran","pendapat"];
+        const isQuestion = keywordPatterns.some(k => new RegExp(k,"i").test(lower));
         const isJokes = lower.includes("haha")||lower.includes("wkwk")||lower.includes("jokes");
 
         // ===== SELEKTIF =====
