@@ -77,7 +77,7 @@ client.on('qr', async qr => {
 
 // ===== READY =====
 client.on('ready', async () => {
-    const me = client.info; // FIXED: info properti
+    const me = client.info;
     botId = me.wid._serialized;
     console.log('🔥 Bot ELIT++ SELEKTIF AKTIF');
 });
@@ -100,10 +100,14 @@ client.on('message', async msg => {
 
         // ===== CEK REPLY / MENTION =====
         let isReplyToBot = false;
-        let quotedMsg = msg.hasQuotedMsg ? await msg.getQuotedMessage().catch(()=>null) : null;
-        if(quotedMsg && quotedMsg.author === botId) isReplyToBot = true;
+        if(msg.hasQuotedMsg){
+            const quotedMsg = await msg.getQuotedMessage().catch(()=>null);
+            if(quotedMsg && quotedMsg.author === botId){
+                isReplyToBot = true; // hanya reply ke bot
+            }
+        }
 
-        const isMention = msg._data?.mentionedJid?.includes(botId);
+        const isMention = Array.isArray(msg._data?.mentionedJid) && msg._data.mentionedJid.includes(botId);
         const isSticker = msg.type==='sticker';
 
         // ===== KEYWORDS =====
@@ -115,7 +119,7 @@ client.on('message', async msg => {
         const isKeyword = keywordPatterns.some(k => new RegExp(k,"i").test(lower));
         const isJokes = lower.includes("haha")||lower.includes("wkwk")||lower.includes("jokes");
 
-        // ===== SELEKTIF TAPI Wajib REPLY KEYWORD =====
+        // ===== SELEKTIF TAPI Wajib REPLY =====
         const shouldReply = isReplyToBot || isMention || isSticker || isKeyword || isJokes;
         if(!shouldReply) return;
 
