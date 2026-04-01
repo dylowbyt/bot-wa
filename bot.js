@@ -63,7 +63,8 @@ async function askAI(messages){
         model:"gpt-4o-mini",
         messages,max_tokens:40
     },{
-        headers:{'Authorization':`Bearer ${API_KEY}`,'Content-Type':'application/json'}
+        headers:{'Authorization':`Bearer ${API_KEY}`,'Content-Type':'application/json'},
+        timeout:10000
     });
     return res.data.choices[0].message.content;
 }
@@ -71,18 +72,21 @@ async function askAI(messages){
 // ===== QR LOGIN =====
 client.on('qr', async qr => {
     const qrImage = await QRCode.toDataURL(qr);
-    console.log(qrImage);
+    console.log('Scan QR ini:', qrImage);
 });
 
 // ===== READY =====
 client.on('ready', async () => {
-    const me = await client.info;
+    const me = client.info; // FIXED: info properti
     botId = me.wid._serialized;
     console.log('🔥 Bot ELIT++ SELEKTIF AKTIF');
 });
 
 // ===== DISCONNECT =====
-client.on('disconnected', ()=>{ client.initialize(); });
+client.on('disconnected', ()=>{
+    console.log('⚠️ Bot disconnected, mencoba reconnect...');
+    setTimeout(()=>client.initialize(),5000);
+});
 
 // ===== MAIN MESSAGE HANDLER =====
 client.on('message', async msg => {
@@ -96,11 +100,10 @@ client.on('message', async msg => {
 
         // ===== CEK REPLY / MENTION =====
         let isReplyToBot = false;
-        if(msg.hasQuotedMsg){
-            const quotedMsg = await msg.getQuotedMessage().catch(()=>null);
-            if(quotedMsg && quotedMsg.author === botId) isReplyToBot = true;
-        }
-        const isMention = msg.mentionedIds?.includes(botId);
+        let quotedMsg = msg.hasQuotedMsg ? await msg.getQuotedMessage().catch(()=>null) : null;
+        if(quotedMsg && quotedMsg.author === botId) isReplyToBot = true;
+
+        const isMention = msg._data?.mentionedJid?.includes(botId);
         const isSticker = msg.type==='sticker';
 
         // ===== KEYWORDS =====
@@ -116,11 +119,9 @@ client.on('message', async msg => {
         const shouldReply = isReplyToBot || isMention || isSticker || isKeyword || isJokes;
         if(!shouldReply) return;
 
-        lastReplyTime = Date.now();
-
         // ===== HANDLE STICKER =====
         if(isSticker){
-            setTimeout(()=>sendSticker(msg), Math.random()*2000+1000);
+            setTimeout(()=>{ sendSticker(msg).catch(console.error); }, Math.random()*2000+1000);
             return;
         }
 
@@ -133,7 +134,7 @@ client.on('message', async msg => {
                         {role:"system", content:getSystemPrompt()},
                         {role:"user", content:text||"Ada media"}
                     ]);
-                    msg.reply(reply);
+                    setTimeout(()=>{ msg.reply(reply).catch(console.error); }, Math.random()*1000+500);
                     return;
                 }
             }
@@ -147,8 +148,8 @@ client.on('message', async msg => {
 
             const reply = await askAI([{role:"system",content:getSystemPrompt()}, ...groupMemory[msg.from]]);
             setTimeout(()=>{
-                msg.reply(reply);
-                if(Math.random()<0.25) setTimeout(()=>sendSticker(msg), Math.random()*2000+1000);
+                msg.reply(reply).catch(console.error);
+                if(Math.random()<0.25) setTimeout(()=>{ sendSticker(msg).catch(console.error); }, Math.random()*2000+1000);
             }, Math.random()*1000+500);
         }
 
@@ -167,11 +168,11 @@ setInterval(async()=>{
                 {role:"system",content:"Lu di grup sepi. Mulai obrolan random relevan topik tongkrongan."},
                 {role:"user",content:"Mulai chat"}
             ]);
-            chat.sendMessage(text);
+            chat.sendMessage(text).catch(console.error);
             groupActivity[chat.id._serialized] = Date.now();
         }
     }
 }, 30*60*1000);
 
 client.initialize();
-setInterval(()=>{},1000);
+setInterval(()=>{},1000); // supaya script tetap hidup
